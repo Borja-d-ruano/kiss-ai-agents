@@ -4,4 +4,4 @@ _(stub; KISS_PROVIDER=openai|anthropic + keys)_
 
 ## Prompt
 
-ping
+test

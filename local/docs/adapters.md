@@ -34,7 +34,7 @@ Por filosofía del proyecto, la **configuración declarativa** de MCP vive en `t
 | Variable | Descripción |
 |----------|-------------|
 | `OPENAI_API_KEY` | Obligatorio. |
-| `OPENAI_MODEL` | Por defecto `gpt-5`. |
+| `OPENAI_MODEL` | Por defecto `gpt-5.4` (documentación oficial de [hosted Shell](https://developers.openai.com/api/docs/guides/tools-shell) usa ese id). Otro modelo puede no admitir `shell` / `code_interpreter`. |
 | `KISS_OPENAI_INSTRUCTIONS` | Instrucciones de sistema (opcional). |
 | `KISS_OPENAI_DISABLE_SHELL` | `1` desactiva hosted Shell. |
 | `KISS_OPENAI_ENABLE_CODE_INTERPRETER` | `1` añade Code Interpreter. |
@@ -60,7 +60,8 @@ Referencias: [MCP connector](https://platform.claude.com/docs/en/agents-and-tool
 
 ## Limitaciones actuales
 
-- Salida principal en `output/*-last.md`. Sin descarga automática de ficheros de contenedor OpenAI.
+- Salida principal en `output/*-last.md`. Sin descarga automática de ficheros del contenedor OpenAI.
+- Rutas `sandbox:/mnt/data/...` en el texto del modelo: entorno alojado, **no** tu carpeta. Para persistir aquí, el modelo debe emitir bloques **`kiss-write`** (parseados en `llm.py` → `writes`); ver [`contracts.md`](contracts.md).
 - Bucle OpenAI: follow-ups principalmente por aprobaciones MCP (heurística).
 - Anthropic: solo `bash` se ejecuta en local; el resto depende del servidor / MCP remoto.
 

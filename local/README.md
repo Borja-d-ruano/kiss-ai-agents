@@ -49,7 +49,7 @@ Por defecto: **stub** (`KISS_PROVIDER` vacío o `stub`).
   ```bash
   export KISS_PROVIDER=openai
   export OPENAI_API_KEY=...
-  export OPENAI_MODEL=gpt-5
+  export OPENAI_MODEL=gpt-5.4
   ```
 
 - **Anthropic** (Messages: bash local, code_execution server-side, MCP remoto desde `tools.md`):
@@ -61,5 +61,7 @@ Por defecto: **stub** (`KISS_PROVIDER` vacío o `stub`).
   ```
 
 Variables detalladas: [`docs/adapters.md`](docs/adapters.md).
+
+- **Varios ficheros en disco:** OpenAI/Anthropic incluyen la convención `kiss-write` en sistema; el adaptador vuelca esos bloques en `writes` además de `output/*-last.md`. Ver [`docs/contracts.md`](contracts.md). El **stub** no genera `kiss-write` (solo sus `writes` fijos).
 
 Compat: `KISS_REAL_MODEL=1` sin `KISS_PROVIDER` → se usa OpenAI.

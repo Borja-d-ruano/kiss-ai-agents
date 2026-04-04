@@ -3,11 +3,56 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import urllib.error
 import urllib.request
 from pathlib import Path
 from typing import Any
+
+_KISS_WRITE_RE = re.compile(
+    r"^```kiss-write\s+path=(\S+)\s*\r?\n(.*?)^```\s*",
+    re.MULTILINE | re.DOTALL,
+)
+_KISS_FILE_HINT = (
+    "Para persistir archivos en la carpeta del agente (memory.md, output/*.md, etc.), "
+    "añade bloques exactamente así (repite si hay varios ficheros); el runtime los escribe con `apply_writes`:\n"
+    "```kiss-write path=memory.md\ncontenido completo del fichero\n```"
+)
+
+
+def _kiss_path_ok(p: str) -> bool:
+    p = p.strip()
+    return bool(p) and ".." not in p and not p.startswith(("/", "\\"))
+
+
+def _kiss_writes_from_text(text: str) -> list[dict]:
+    by: dict[str, str] = {}
+    for m in _KISS_WRITE_RE.finditer(text or ""):
+        path, content = m.group(1).strip(), m.group(2).rstrip("\r\n")
+        if _kiss_path_ok(path):
+            by[path] = content
+    return [{"path": k, "content": v} for k, v in by.items()]
+
+
+def _strip_kiss_write_blocks(text: str) -> str:
+    return _KISS_WRITE_RE.sub("", text or "").strip()
+
+
+def _kiss_writes_bundle(raw: str, last_slug: str) -> tuple[list[dict], str]:
+    raw = raw or ""
+    clean = _strip_kiss_write_blocks(raw) or raw.strip()
+    extras = _kiss_writes_from_text(raw)
+    last_path = f"output/{last_slug}-last.md"
+    writes: list[dict] = [{"path": last_path, "content": clean or raw}]
+    seen = {last_path}
+    for w in extras:
+        p = w["path"]
+        if p in seen or not _kiss_path_ok(p):
+            continue
+        writes.append({"path": p, "content": w["content"]})
+        seen.add(p)
+    return writes, clean or raw
 
 
 def _post(url: str, data: dict, headers: dict[str, str], who: str = "") -> dict:
@@ -60,7 +105,7 @@ def _oai_txt(resp: dict) -> str:
 
 
 def normalize_tools_openai(raw: str) -> str:
-    m = os.environ.get("OPENAI_MODEL", "gpt-5").strip()
+    m = os.environ.get("OPENAI_MODEL", "gpt-5.4").strip()
     return _oai_txt(
         _post(
             "https://api.openai.com/v1/responses",
@@ -157,13 +202,14 @@ def _oai_tools(cfg: dict) -> list[dict]:
 def call_openai(
     *, prompt: str, context: str, agent_dir: Path | None = None, tools_cfg: dict | None = None
 ) -> dict:
-    m = os.environ.get("OPENAI_MODEL", "gpt-5").strip()
+    m = os.environ.get("OPENAI_MODEL", "gpt-5.4").strip()
     cfg = tools_cfg if isinstance(tools_cfg, dict) else {}
     tools = _oai_tools(cfg)
-    sys = os.environ.get(
+    base_sys = os.environ.get(
         "KISS_OPENAI_INSTRUCTIONS",
         "Eres KISS Agents; usa tools si hace falta; el host guarda salida en output/.",
-    )
+    ).strip()
+    sys = f"{base_sys}\n\n{_KISS_FILE_HINT}"
     body = f"{context}\n\n---\n\nUSER_PROMPT:\n{prompt}"
     items: Any = [{"role": "system", "content": sys}, {"role": "user", "content": body}]
     prev, last = None, ""
@@ -185,7 +231,8 @@ def call_openai(
             continue
         break
     text = last or "(sin texto en output)"
-    return {"final": True, "message": text[:2000], "writes": [{"path": "output/openai-last.md", "content": text}]}
+    writes, display = _kiss_writes_bundle(text, "openai")
+    return {"final": True, "message": display[:2000], "writes": writes}
 
 
 def _bash(cmd: str, to: int, ad: Path | None) -> str:
@@ -231,7 +278,12 @@ def call_anthropic(
     to = int(os.environ.get("KISS_BASH_TIMEOUT", "120"))
     fin = ""
     for _ in range(48):
-        pl: dict = {"model": m, "max_tokens": mt, "messages": msgs}
+        pl: dict = {
+            "model": m,
+            "max_tokens": mt,
+            "messages": msgs,
+            "system": _KISS_FILE_HINT,
+        }
         if tools:
             pl["tools"] = tools
         if mcp:
@@ -273,4 +325,5 @@ def call_anthropic(
             break
         msgs += [{"role": "assistant", "content": content}, {"role": "user", "content": tr}]
     text = fin or "(sin texto en output)"
-    return {"final": True, "message": text[:2000], "writes": [{"path": "output/anthropic-last.md", "content": text}]}
+    writes, display = _kiss_writes_bundle(text, "anthropic")
+    return {"final": True, "message": display[:2000], "writes": writes}

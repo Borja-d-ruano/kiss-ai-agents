@@ -11,9 +11,22 @@ Cada agente es un directorio bajo `examples/<agent_id>/` (o la ruta que defina `
 | `tools.md` | Herramientas permitidas (MCP, HTTP, etc.) + bloque JSON canónico para wiring real. |
 | `data.md` | Datos de contexto o dónde encontrarlos. |
 | `done.md` | Criterio de terminación (el modelo debe honrarlo al devolver `final`). |
-| `memory.md` | Memoria resumida persistente. |
+| `memory.md` | Persistencia vía **`kiss-write`** en la respuesta del modelo (parseada en `llm.py`); el runtime aplica todos los `writes` devueltos por el adaptador. Ver abajo. |
 | `steps.md` | Plan / estado de ejecución. |
 | `schedule.md` | Programación: `**cron**`, `**tz**`, `**run**`, opcional `**paused**`, `**not_before**` (fecha `YYYY-MM-DD` o ISO), `**blackout**` (`HH:MM-HH:MM` en `tz`, cruza medianoche si inicio > fin), tabla `## History`. |
+
+## `memory.md` entre runs (varios `run` / varios mensajes)
+
+OpenAI y Anthropic reciben en sistema la convención **`kiss-write`**: bloques en el texto de salida con rutas relativas al agente. `llm.py` los convierte en entradas extra de `writes` junto a `output/<provider>-last.md` (texto sin esos bloques).
+
+````markdown
+```kiss-write path=memory.md
+# Memoria
+…contenido completo…
+```
+````
+
+Rutas con `..` o absolutas se ignoran. Lo escrito solo en el **sandbox** del proveedor (`sandbox:/mnt/data/…`) no llega al disco local salvo que el modelo reproduzca el contenido en un `kiss-write`.
 
 ## Carpetas
 
