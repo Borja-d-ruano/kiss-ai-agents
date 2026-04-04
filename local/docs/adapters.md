@@ -1,6 +1,6 @@
 # Adaptadores OpenAI y Anthropic (stdlib)
 
-Implementación: `runtime/llm.py` (OpenAI + Anthropic), despacho en `runtime/model_adapter.py`.
+Implementación: `runtime/llm.py` (OpenAI + Anthropic en un módulo); despacho en `model_adapter.py`. `tools.md` se resuelve **una vez** al inicio de `run()` vía `md_io.resolve_tools_config`.
 
 ## Activación
 
@@ -16,17 +16,18 @@ Por filosofía del proyecto, la **configuración declarativa** de MCP vive en `t
 ```json
 {
   "openai_mcp_tools": [],
-  "anthropic_mcp_servers": []
+  "anthropic_mcp_servers": [],
+  "mcp_servers": []
 }
 ```
 
-El runtime:
+`mcp_servers` (opcional) es lista neutral `{ "name", "url", "type" }`; se **mapea** a entradas en las dos listas de proveedor. El runtime, **al arrancar cada `run`**:
 
 1. extrae el primer bloque ` ```json ... ``` ` de `tools.md`,
-2. hace `json.loads`,
-3. valida solo tipos básicos,
-4. si falla, pide **1 normalización** al modelo y vuelve a parsear,
-5. si vuelve a fallar, degrada a arrays vacíos.
+2. parsea y valida listas,
+3. aplica `mcp_servers` → openai / anthropic,
+4. si el JSON falla, **una** normalización con el proveedor activo (si hay),
+5. si sigue fallando, escribe `output/tools-md-invalid.md` y usa config vacía.
 
 ## OpenAI (Responses API)
 

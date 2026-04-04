@@ -1,4 +1,4 @@
-"""OpenAI Responses + Anthropic Messages (urllib stdlib). MCP desde bloque JSON en tools.md."""
+"""OpenAI Responses + Anthropic Messages (urllib); normalización tools compartida por nombre."""
 from __future__ import annotations
 
 import json
@@ -9,10 +9,8 @@ import urllib.request
 from pathlib import Path
 from typing import Any
 
-from md_io import parse_or_normalize_tools_md
 
-
-def _req(url: str, data: dict, headers: dict[str, str], who: str = "") -> dict:
+def _post(url: str, data: dict, headers: dict[str, str], who: str = "") -> dict:
     r = urllib.request.Request(
         url, data=json.dumps(data).encode(), headers=headers, method="POST"
     )
@@ -24,14 +22,14 @@ def _req(url: str, data: dict, headers: dict[str, str], who: str = "") -> dict:
         raise RuntimeError(f"{p}HTTP {e.code}: {e.read().decode(errors='replace')}") from e
 
 
-def _hdr_oai() -> dict[str, str]:
+def _oai_hdr() -> dict[str, str]:
     k = os.environ.get("OPENAI_API_KEY", "").strip()
     if not k:
         raise RuntimeError("Falta OPENAI_API_KEY")
     return {"Authorization": f"Bearer {k}", "Content-Type": "application/json"}
 
 
-def _hdr_ant(beta: str) -> dict[str, str]:
+def _ant_hdr(beta: str) -> dict[str, str]:
     k = os.environ.get("ANTHROPIC_API_KEY", "").strip()
     if not k:
         raise RuntimeError("Falta ANTHROPIC_API_KEY")
@@ -59,6 +57,55 @@ def _oai_txt(resp: dict) -> str:
     a: list[str] = []
     _walk(resp.get("output", []), a)
     return "\n".join(a).strip()
+
+
+def normalize_tools_openai(raw: str) -> str:
+    m = os.environ.get("OPENAI_MODEL", "gpt-5").strip()
+    return _oai_txt(
+        _post(
+            "https://api.openai.com/v1/responses",
+            {
+                "model": m,
+                "input": [
+                    {
+                        "role": "system",
+                        "content": (
+                            'Corrige tools.md → SOLO JSON {"openai_mcp_tools":[],"anthropic_mcp_servers":[],"mcp_servers":[]} '
+                            "sin markdown; arrays vacíos si falta data."
+                        ),
+                    },
+                    {"role": "user", "content": raw[:12000]},
+                ],
+            },
+            _oai_hdr(),
+            "OpenAI",
+        )
+    )
+
+
+def normalize_tools_anthropic(raw: str) -> str:
+    m = os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-4-5-20250929").strip()
+    r = _post(
+        "https://api.anthropic.com/v1/messages",
+        {
+            "model": m,
+            "max_tokens": 2048,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": (
+                        'SOLO JSON {"openai_mcp_tools":[],"anthropic_mcp_servers":[],"mcp_servers":[]} '
+                        "sin markdown.\n\n" + raw[:12000]
+                    ),
+                }
+            ],
+        },
+        _ant_hdr(""),
+        "Anthropic",
+    )
+    return "\n".join(
+        str(b.get("text", "")) for b in r.get("content") or [] if b.get("type") == "text"
+    ).strip()
 
 
 def _oai_approve(resp: dict) -> list[dict]:
@@ -89,31 +136,7 @@ def _oai_approve(resp: dict) -> list[dict]:
     return out
 
 
-def _norm_oai(raw: str) -> str:
-    m = os.environ.get("OPENAI_MODEL", "gpt-5").strip()
-    return _oai_txt(
-        _req(
-            "https://api.openai.com/v1/responses",
-            {
-                "model": m,
-                "input": [
-                    {
-                        "role": "system",
-                        "content": (
-                            'Corrige tools.md → SOLO JSON válido {"openai_mcp_tools":[],"anthropic_mcp_servers":[]} '
-                            "sin markdown; arrays vacíos si falta data."
-                        ),
-                    },
-                    {"role": "user", "content": raw[:12000]},
-                ],
-            },
-            _hdr_oai(),
-            "OpenAI",
-        )
-    )
-
-
-def _oai_tools(ad: Path | None) -> list[dict]:
+def _oai_tools(cfg: dict) -> list[dict]:
     o: list[dict] = []
     if os.environ.get("KISS_OPENAI_DISABLE_SHELL") not in ("1", "true", "yes"):
         o.append({"type": "shell", "environment": {"type": "container_auto"}})
@@ -127,14 +150,16 @@ def _oai_tools(ad: Path | None) -> list[dict]:
                 },
             }
         )
-    o.extend((parse_or_normalize_tools_md(ad, _norm_oai) or {}).get("openai_mcp_tools") or [])
+    o.extend(cfg.get("openai_mcp_tools") or [])
     return o
 
 
-def call_openai(*, prompt: str, context: str, agent_dir: Path | None = None) -> dict:
+def call_openai(
+    *, prompt: str, context: str, agent_dir: Path | None = None, tools_cfg: dict | None = None
+) -> dict:
     m = os.environ.get("OPENAI_MODEL", "gpt-5").strip()
-    ad = Path(agent_dir).resolve() if agent_dir else None
-    tools = _oai_tools(ad)
+    cfg = tools_cfg if isinstance(tools_cfg, dict) else {}
+    tools = _oai_tools(cfg)
     sys = os.environ.get(
         "KISS_OPENAI_INSTRUCTIONS",
         "Eres KISS Agents; usa tools si hace falta; el host guarda salida en output/.",
@@ -148,7 +173,7 @@ def call_openai(*, prompt: str, context: str, agent_dir: Path | None = None) -> 
             pl["store"] = False
         if prev:
             pl = {"model": m, "previous_response_id": prev, "input": items}
-        resp = _req("https://api.openai.com/v1/responses", pl, _hdr_oai(), "OpenAI")
+        resp = _post("https://api.openai.com/v1/responses", pl, _oai_hdr(), "OpenAI")
         prev = resp.get("id") or prev
         last = _oai_txt(resp) or last
         st = str(resp.get("status", "completed"))
@@ -172,34 +197,8 @@ def _bash(cmd: str, to: int, ad: Path | None) -> str:
         return f"Error: timeout tras {to}s"
 
 
-def _norm_ant(raw: str) -> str:
-    m = os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-4-5-20250929").strip()
-    r = _req(
-        "https://api.anthropic.com/v1/messages",
-        {
-            "model": m,
-            "max_tokens": 2048,
-            "messages": [
-                {
-                    "role": "user",
-                    "content": (
-                        'SOLO JSON {"openai_mcp_tools":[],"anthropic_mcp_servers":[]} sin markdown.\n\n'
-                        + raw[:12000]
-                    ),
-                }
-            ],
-        },
-        _hdr_ant(""),
-        "Anthropic",
-    )
-    return "\n".join(
-        str(b.get("text", "")) for b in r.get("content") or [] if b.get("type") == "text"
-    ).strip()
-
-
-def _ant_build(ad: Path | None) -> tuple[list[dict], list[dict], str]:
+def _ant_build(cfg: dict) -> tuple[list[dict], list[dict], str]:
     t, ms, b = [], [], []
-    cfg = parse_or_normalize_tools_md(ad, _norm_ant)
     fl = os.environ.get("KISS_ANTHROPIC_TOOLS", "bash,code_execution,mcp").lower()
     if "bash" in fl:
         t.append({"type": "bash_20250124", "name": "bash"})
@@ -219,11 +218,14 @@ def _ant_build(ad: Path | None) -> tuple[list[dict], list[dict], str]:
     return t, ms, ",".join(b)
 
 
-def call_anthropic(*, prompt: str, context: str, agent_dir: Path | None = None) -> dict:
+def call_anthropic(
+    *, prompt: str, context: str, agent_dir: Path | None = None, tools_cfg: dict | None = None
+) -> dict:
     m = os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-4-5-20250929").strip()
     mt = int(os.environ.get("KISS_ANTHROPIC_MAX_TOKENS", "8192"))
     ad = Path(agent_dir).resolve() if agent_dir else None
-    tools, mcp, beta = _ant_build(ad)
+    cfg = tools_cfg if isinstance(tools_cfg, dict) else {}
+    tools, mcp, beta = _ant_build(cfg)
     ut = f"{context}\n\n---\n\nUSER_PROMPT:\n{prompt}"
     msgs: list[dict] = [{"role": "user", "content": ut}]
     to = int(os.environ.get("KISS_BASH_TIMEOUT", "120"))
@@ -234,7 +236,7 @@ def call_anthropic(*, prompt: str, context: str, agent_dir: Path | None = None) 
             pl["tools"] = tools
         if mcp:
             pl["mcp_servers"] = mcp
-        resp = _req("https://api.anthropic.com/v1/messages", pl, _hdr_ant(beta), "Anthropic")
+        resp = _post("https://api.anthropic.com/v1/messages", pl, _ant_hdr(beta), "Anthropic")
         content = resp.get("content") or []
         fin = (
             "\n".join(str(b.get("text", "")) for b in content if b.get("type") == "text").strip()

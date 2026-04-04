@@ -2,19 +2,38 @@ import os
 from datetime import datetime
 
 
-def call_model(*, prompt: str, context: str, agent_dir=None, **_kw) -> dict:
-    prov = (os.environ.get("KISS_PROVIDER") or "").strip().lower()
-    if not prov and os.environ.get("KISS_REAL_MODEL"):
-        prov = "openai"
+def kiss_provider() -> str:
+    p = (os.environ.get("KISS_PROVIDER") or "").strip().lower()
+    if not p and os.environ.get("KISS_REAL_MODEL"):
+        return "openai"
+    return p or "stub"
+
+
+def tools_normalizer_fn():
+    p = kiss_provider()
+    if p == "openai":
+        from llm import normalize_tools_openai
+
+        return normalize_tools_openai
+    if p in ("anthropic", "claude"):
+        from llm import normalize_tools_anthropic
+
+        return normalize_tools_anthropic
+    return None
+
+
+def call_model(*, prompt: str, context: str, agent_dir=None, tools_cfg=None, **_kw) -> dict:
+    prov = kiss_provider()
+    tc = tools_cfg if isinstance(tools_cfg, dict) else {}
     if prov == "openai":
         from llm import call_openai
 
-        return call_openai(prompt=prompt, context=context, agent_dir=agent_dir)
+        return call_openai(prompt=prompt, context=context, agent_dir=agent_dir, tools_cfg=tc)
     if prov in ("anthropic", "claude"):
         from llm import call_anthropic
 
-        return call_anthropic(prompt=prompt, context=context, agent_dir=agent_dir)
-    if prov and prov != "stub":
+        return call_anthropic(prompt=prompt, context=context, agent_dir=agent_dir, tools_cfg=tc)
+    if prov != "stub":
         raise RuntimeError(f"KISS_PROVIDER desconocido: {prov}")
     p = (prompt or "").lower()
     body = (

@@ -4,7 +4,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 
 from model_adapter import call_model
-from run import run
+from run import run, tick_run_fn
 from tick import tick_all
 
 
@@ -54,12 +54,7 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(200, {"ok": True, "message": run(folder, pr, call_model)})
             elif self.path == "/api/tick":
                 root = default_agents_root()
-
-                def run_fn(*, agent_id, prompt):
-                    m = run(root / agent_id, prompt, call_model)
-                    return {"status": "ok", "output": "output/stub-last.md", "message": m}
-
-                self._send(200, {"ok": True, "runs": tick_all(root, run_fn)})
+                self._send(200, {"ok": True, "runs": tick_all(root, tick_run_fn(root, call_model))})
             else:
                 self.send_error(404)
         except Exception as e:
