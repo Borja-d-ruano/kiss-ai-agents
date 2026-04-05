@@ -10,6 +10,7 @@ def main() -> None:
     pr.add_argument("folder", type=Path)
     pr.add_argument("prompt")
     pr.add_argument("--max-turns", type=int, default=6)
+    pr.add_argument("--session", default=None, help="id de sesión (fichero input/session/<id>.jsonl)")
     pt = sp.add_parser("tick")
     pt.add_argument("--root", type=Path, default=None)
     ps = sp.add_parser("serve")
@@ -19,7 +20,15 @@ def main() -> None:
     if a.cmd == "run":
         from model_adapter import call_model
         from run import run
-        print(run(Path(a.folder).resolve(), a.prompt, call_model, max_turns=a.max_turns))
+        print(
+            run(
+                Path(a.folder).resolve(),
+                a.prompt,
+                call_model,
+                max_turns=a.max_turns,
+                session_id=a.session,
+            )
+        )
     elif a.cmd == "tick":
         from model_adapter import call_model
         from run import run, tick_run_fn

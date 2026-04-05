@@ -42,7 +42,16 @@ class Handler(BaseHTTPRequestHandler):
                     p = folder / rel
                     p.parent.mkdir(parents=True, exist_ok=True)
                     p.write_text(str(content), encoding="utf-8")
-                self._send(200, {"ok": True, "message": run(folder, pr, call_model)})
+                sid = str(b.get("session_id") or "default").strip() or "default"
+                mxt = b.get("max_turns")
+                mt = int(mxt) if mxt is not None else None
+                self._send(
+                    200,
+                    {
+                        "ok": True,
+                        "message": run(folder, pr, call_model, max_turns=mt, session_id=sid),
+                    },
+                )
             elif self.path == "/api/tick":
                 root = default_agents_root()
                 self._send(200, {"ok": True, "runs": tick_all(root, tick_run_fn(root, call_model))})

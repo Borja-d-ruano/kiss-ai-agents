@@ -1,18 +1,4 @@
-"""
-Cliente HTTP (stdlib) hacia la API del sitio comprador / SaaS (misma superficie que
-mcp_providers/property_search en rag-api). Usado por kiss_tool_gateway cuando
-KISS_SAAS_API_BASE_URL está definida.
-
-Auth hacia el SaaS (independiente del Basic del gateway):
-  KISS_SAAS_API_TOKEN       — obligatorio para la mayoría de mutaciones y /api/properties/search
-  KISS_SAAS_AUTH_HEADER     — nombre de cabecera (default Authorization)
-  KISS_SAAS_TOKEN_PREFIX    — p.ej. Bearer (default Bearer). Si vacío, solo el token.
-
-Alternativa documentada en api-properties.md:
-  KISS_SAAS_USE_X_API_TOKEN=1  — envía X-API-Token: <token> en lugar de Bearer.
-
-GET /api/properties puede ser público en algunos despliegues; igualmente se envía token si existe.
-"""
+"""HTTP client al SaaS (property_search). Requiere KISS_SAAS_API_BASE_URL; token KISS_SAAS_API_TOKEN o KISS_SAAS_USE_X_API_TOKEN=1."""
 from __future__ import annotations
 
 import json
@@ -25,8 +11,6 @@ from typing import Any
 
 _DEFAULT_TIMEOUT = int(os.environ.get("KISS_SAAS_HTTP_TIMEOUT", "120"))
 _PUBLIC_BASE = os.environ.get("KISS_RK_PUBLIC_BASE", "https://rkcompradores.alt-94.dev").rstrip("/")
-
-# Endpoints configurables (defaults alineados con rag-api)
 _EP_PROPERTIES = os.environ.get("KISS_SAAS_ENDPOINT_PROPERTIES", "/api/properties")
 _EP_PROP_SEARCH = os.environ.get("KISS_SAAS_ENDPOINT_PROPERTY_SEARCH", "/api/properties/search")
 _EP_CONTACT_SEARCH = os.environ.get("KISS_SAAS_ENDPOINT_CONTACT_SEARCH", "/api/contactos/search")
@@ -35,23 +19,15 @@ _EP_DEMANDS = os.environ.get("KISS_SAAS_ENDPOINT_DEMANDS", "/api/demands")
 _EP_GESTIONES = os.environ.get("KISS_SAAS_ENDPOINT_GESTIONES", "/api/gestiones")
 _EP_GESTION_CREATE = os.environ.get("KISS_SAAS_ENDPOINT_GESTION_CREATE", "/api/gestiones/create")
 _EP_GESTION_DELETE = os.environ.get("KISS_SAAS_ENDPOINT_GESTION_DELETE", "/api/gestiones/delete")
-
-
 def configured() -> bool:
     return bool((os.environ.get("KISS_SAAS_API_BASE_URL") or "").strip())
-
-
 def _base() -> str:
     b = (os.environ.get("KISS_SAAS_API_BASE_URL") or "").strip().rstrip("/")
     if not b:
         raise RuntimeError("KISS_SAAS_API_BASE_URL no está definida")
     return b
-
-
 def _token() -> str:
     return (os.environ.get("KISS_SAAS_API_TOKEN") or "").strip()
-
-
 def _auth_headers() -> dict[str, str]:
     tok = _token()
     if not tok:
@@ -63,8 +39,6 @@ def _auth_headers() -> dict[str, str]:
     if prefix:
         return {hname: f"{prefix} {tok}"}
     return {hname: tok}
-
-
 def _request(
     method: str,
     path: str,
@@ -100,8 +74,6 @@ def _request(
     except urllib.error.HTTPError as e:
         body = e.read().decode("utf-8", errors="replace")
         raise RuntimeError(f"SaaS HTTP {e.code}: {body[:2000]}") from e
-
-
 def _find_id(obj: Any, keys: tuple[str, ...]) -> str | None:
     if isinstance(obj, dict):
         for k in keys:
@@ -118,8 +90,6 @@ def _find_id(obj: Any, keys: tuple[str, ...]) -> str | None:
             if r:
                 return r
     return None
-
-
 def _parse_property_search_list(data: dict[str, Any]) -> tuple[list[dict[str, Any]], int, int]:
     properties: list[dict[str, Any]] = []
     total = 0
@@ -133,8 +103,6 @@ def _parse_property_search_list(data: dict[str, Any]) -> tuple[list[dict[str, An
         properties = data
         total = len(properties)
     return properties, len(properties), total
-
-
 def _enrich_listing(p: dict[str, Any]) -> dict[str, Any]:
     loc = p.get("location") or {}
     if loc:
@@ -159,8 +127,6 @@ def _enrich_listing(p: dict[str, Any]) -> dict[str, Any]:
                 "has_agent": True,
             }
     return p
-
-
 def _listing_summary(p: dict[str, Any]) -> dict[str, Any]:
     p = _enrich_listing(dict(p))
     ext = p.get("externalId")
@@ -184,8 +150,6 @@ def _listing_summary(p: dict[str, Any]) -> dict[str, Any]:
         "url": url,
         "agent": p.get("agent"),
     }
-
-
 def search_properties(body: dict[str, Any]) -> dict[str, Any]:
     q: dict[str, Any] = {}
     if body.get("city"):
@@ -216,15 +180,11 @@ def search_properties(body: dict[str, Any]) -> dict[str, Any]:
     props, count, total = _parse_property_search_list(data)
     summaries = [_listing_summary(p) for p in props]
     return {"properties": summaries, "count": count, "total": total}
-
-
 def _property_search_by_id(candidate: str) -> dict[str, Any]:
     data = _request("GET", _EP_PROP_SEARCH, query={"id": candidate})
     if not isinstance(data, dict):
         raise RuntimeError("Respuesta inesperada en detalle de propiedad")
     return data
-
-
 def property_details(body: dict[str, Any]) -> dict[str, Any]:
     ref = str(body.get("ref") or "").strip()
     if not ref:
@@ -272,8 +232,6 @@ def property_details(body: dict[str, Any]) -> dict[str, Any]:
                 "email": ag.get("email"),
             }
     return {"property": prop, "has_agent": has_agent, "agent_info": agent_info}
-
-
 def property_interest(body: dict[str, Any]) -> dict[str, Any]:
     ext = body.get("external_id")
     candidates = [str(x) for x in (ext, body.get("ref")) if x]
@@ -304,8 +262,6 @@ def property_interest(body: dict[str, Any]) -> dict[str, Any]:
             last_err = str(e)
             continue
     raise RuntimeError(last_err or "No se pudo resolver la propiedad")
-
-
 def search_contact(body: dict[str, Any]) -> dict[str, Any]:
     tel = str(body.get("telefono") or "").strip()
     if not tel:
@@ -323,8 +279,6 @@ def search_contact(body: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(contactos, list):
         contactos = []
     return {"contactos": contactos, "total": len(contactos), "message": inner.get("message", "ok")}
-
-
 def create_contact(body: dict[str, Any]) -> dict[str, Any]:
     nombre = body.get("nombre")
     if not nombre:
@@ -354,8 +308,6 @@ def create_contact(body: dict[str, Any]) -> dict[str, Any]:
         or "Contacto creado"
     )
     return {"id_contacto": cid, "id_usuario": cid, "message": str(msg)}
-
-
 def create_demand(body: dict[str, Any]) -> dict[str, Any]:
     id_inm = body.get("id_inmueble")
     id_ct = body.get("id_contacto")
@@ -388,8 +340,6 @@ def create_demand(body: dict[str, Any]) -> dict[str, Any]:
         or "Demanda creada",
         "raw_response": inner,
     }
-
-
 def _gestiones_for_agent_day(agent_id: str, date_yyyy_mm_dd: str) -> list[dict[str, Any]]:
     data = _request("GET", _EP_GESTIONES, query={"agentId": agent_id})
     if not isinstance(data, dict):
@@ -406,8 +356,6 @@ def _gestiones_for_agent_day(agent_id: str, date_yyyy_mm_dd: str) -> list[dict[s
         if fp.startswith(date_yyyy_mm_dd) and est == "Planificada":
             out.append(g)
     return out
-
-
 def _busy_hhmm(gestiones: list[dict[str, Any]]) -> list[str]:
     busy: list[str] = []
     for g in gestiones:
@@ -422,8 +370,6 @@ def _busy_hhmm(gestiones: list[dict[str, Any]]) -> list[str]:
         if m:
             busy.append(m.group(2))
     return busy
-
-
 def check_agent_availability(body: dict[str, Any]) -> dict[str, Any]:
     agent_id = str(body.get("agent_id") or "").strip()
     date = str(body.get("date") or "").strip()
@@ -443,8 +389,6 @@ def check_agent_availability(body: dict[str, Any]) -> dict[str, Any]:
         "busy_slots": busy_slots,
         "total_slots": len(avail),
     }
-
-
 def schedule_visit(body: dict[str, Any]) -> dict[str, Any]:
     pid = str(body.get("property_external_id") or "").strip()
     aid = str(body.get("agent_id") or "").strip()
@@ -496,8 +440,6 @@ def schedule_visit(body: dict[str, Any]) -> dict[str, Any]:
         or data.get("message")
         or "Visita agendada",
     }
-
-
 def cancel_visit(body: dict[str, Any]) -> dict[str, Any]:
     gid = str(body.get("gestion_id") or "").strip()
     if not gid:

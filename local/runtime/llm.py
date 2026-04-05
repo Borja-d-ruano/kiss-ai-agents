@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import time
 import subprocess
 import urllib.error
 import urllib.request
@@ -48,6 +49,35 @@ def _post(url: str, data: dict, headers: dict[str, str], who: str = "") -> dict:
     except urllib.error.HTTPError as e:
         p = f"{who} " if who else ""
         raise RuntimeError(f"{p}HTTP {e.code}: {e.read().decode(errors='replace')}") from e
+def _get(url: str, headers: dict[str, str], who: str = "") -> dict:
+    r = urllib.request.Request(url, headers=headers, method="GET")
+    try:
+        with urllib.request.urlopen(r, timeout=600) as resp:
+            return json.loads(resp.read().decode())
+    except urllib.error.HTTPError as e:
+        p = f"{who} " if who else ""
+        raise RuntimeError(f"{p}HTTP {e.code}: {e.read().decode(errors='replace')}") from e
+def _oai_poll_terminal(resp: dict, headers: dict[str, str]) -> dict:
+    """Responses puede quedar queued/in_progress mientras MCP/tools corren; sin esto se corta el texto."""
+    r = resp
+    interval = float(os.environ.get("KISS_OPENAI_POLL_INTERVAL", "1.5"))
+    max_waits = int(os.environ.get("KISS_OPENAI_POLL_MAX", "400"))
+    for _ in range(max_waits):
+        st = str(r.get("status", "completed"))
+        if st not in ("queued", "in_progress"):
+            return r
+        rid = r.get("id")
+        if not rid:
+            return r
+        time.sleep(interval)
+        r = _get(f"https://api.openai.com/v1/responses/{rid}", headers, "OpenAI")
+    return r
+def _reply_max_chars() -> int:
+    try:
+        n = int(os.environ.get("KISS_REPLY_MAX_CHARS", "16000").strip())
+    except ValueError:
+        n = 16000
+    return max(500, n)
 def _oai_hdr() -> dict[str, str]:
     k = os.environ.get("OPENAI_API_KEY", "").strip()
     if not k:
@@ -224,23 +254,63 @@ def _oai_tools(cfg: dict) -> list[dict]:
         o.append({"type": "code_interpreter", "container": {"type": "auto", "memory_limit": os.environ.get("KISS_OPENAI_CI_MEMORY", "4g")}})
     o.extend(_normalize_openai_mcp_tools(cfg.get("openai_mcp_tools") or []))
     return o
-def call_openai(*, prompt: str, context: str, agent_dir: Path | None = None, tools_cfg: dict | None = None) -> dict:
+_PEND_ST, _CALL_T = frozenset({"in_progress", "calling", "incomplete"}), frozenset(
+    {"mcp_call", "function_call", "custom_tool_call", "code_interpreter_call", "shell_call"}
+)
+def _oai_pending_tools_out(o: Any) -> bool:
+    if isinstance(o, dict):
+        if str(o.get("type", "")) in _CALL_T and str(o.get("status", "completed")) in _PEND_ST:
+            return True
+        return any(_oai_pending_tools_out(v) for v in o.values())
+    return isinstance(o, list) and any(_oai_pending_tools_out(x) for x in o)
+def call_openai(
+    *,
+    prompt: str | None = None,
+    context: str,
+    messages: list[dict] | None = None,
+    agent_dir: Path | None = None,
+    tools_cfg: dict | None = None,
+) -> dict:
     m = os.environ.get("OPENAI_MODEL", "gpt-5.4").strip()
     cfg = tools_cfg if isinstance(tools_cfg, dict) else {}
     tools = _oai_tools(cfg)
     base_sys = os.environ.get("KISS_OPENAI_INSTRUCTIONS", "Eres KISS Agents; usa tools si hace falta; el host guarda salida en output/.").strip()
-    sys = f"{base_sys}\n\n{_KISS_FILE_HINT}"
-    body = f"{context}\n\n---\n\nUSER_PROMPT:\n{prompt}"
-    items: Any = [{"role": "system", "content": sys}, {"role": "user", "content": body}]
+    hint = _KISS_FILE_HINT
+    if messages is not None:
+        sys = f"{base_sys}\n\n{hint}\n\n---\n\n# Carpeta del agente\n\n{context}"
+        items: Any = [{"role": "system", "content": sys}]
+        for msg in messages:
+            if not isinstance(msg, dict):
+                continue
+            role, c = msg.get("role"), msg.get("content")
+            if role in ("user", "assistant") and isinstance(c, str):
+                items.append({"role": role, "content": c})
+    else:
+        sys = f"{base_sys}\n\n{hint}"
+        body = f"{context}\n\n---\n\nUSER_PROMPT:\n{prompt}"
+        items = [{"role": "system", "content": sys}, {"role": "user", "content": body}]
     ad = Path(agent_dir).resolve() if agent_dir else None
     prev, last = None, ""
+    try:
+        mot = max(256, int(os.environ.get("KISS_OPENAI_MAX_OUTPUT_TOKENS", "32768")))
+    except ValueError:
+        mot = 32768
+    lim: dict[str, Any] = {"max_output_tokens": mot}
+    try:
+        n = int(os.environ.get("KISS_OPENAI_MAX_TOOL_CALLS", "32"))
+        if n > 0:
+            lim["max_tool_calls"] = n
+    except ValueError:
+        pass
     for _ in range(64):
-        pl: dict = {"model": m, "input": items, "tools": tools}
+        pl: dict = {"model": m, "input": items, "tools": tools, **lim}
         if os.environ.get("KISS_OPENAI_STORE_FALSE") in ("1", "true"):
             pl["store"] = False
         if prev:
             pl["previous_response_id"] = prev
         resp = _post("https://api.openai.com/v1/responses", pl, _oai_hdr(), "OpenAI")
+        hdr = _oai_hdr()
+        resp = _oai_poll_terminal(resp, hdr)
         prev = resp.get("id") or prev
         last = _oai_txt(resp) or last
         ap = _oai_approve(resp)
@@ -252,12 +322,25 @@ def call_openai(*, prompt: str, context: str, agent_dir: Path | None = None, too
             items = sh
             continue
         st = str(resp.get("status", "completed"))
-        if st in ("completed", "failed", "cancelled"):
+        if st in ("failed", "cancelled"):
+            break
+        if st == "incomplete":
+            if str((resp.get("incomplete_details") or {}).get("reason", "")) == "content_filter":
+                break
+            items = []
+            continue
+        if st in ("queued", "in_progress"):
+            items = []
+            continue
+        if st == "completed":
+            if _oai_pending_tools_out(resp.get("output")):
+                items = []
+                continue
             break
         break
     text = last or "(sin texto en output)"
     writes, display = _kiss_writes_bundle(text, "openai")
-    return {"final": True, "message": display[:2000], "writes": writes}
+    return {"final": True, "message": display[: _reply_max_chars()], "writes": writes}
 def _bash(cmd: str, to: int, ad: Path | None) -> str:
     cwd = os.environ.get("KISS_BASH_CWD") or (str(ad) if ad else "") or os.getcwd()
     try:
@@ -284,18 +367,36 @@ def _ant_build(cfg: dict) -> tuple[list[dict], list[dict], str]:
     if ex:
         b.extend(x.strip() for x in ex.split(",") if x.strip())
     return t, ms, ",".join(b)
-def call_anthropic(*, prompt: str, context: str, agent_dir: Path | None = None, tools_cfg: dict | None = None) -> dict:
+def call_anthropic(
+    *,
+    prompt: str | None = None,
+    context: str,
+    messages: list[dict] | None = None,
+    agent_dir: Path | None = None,
+    tools_cfg: dict | None = None,
+) -> dict:
     m = os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-4-5-20250929").strip()
     mt = int(os.environ.get("KISS_ANTHROPIC_MAX_TOKENS", "8192"))
     ad = Path(agent_dir).resolve() if agent_dir else None
     cfg = tools_cfg if isinstance(tools_cfg, dict) else {}
     tools, mcp, beta = _ant_build(cfg)
-    ut = f"{context}\n\n---\n\nUSER_PROMPT:\n{prompt}"
-    msgs: list[dict] = [{"role": "user", "content": ut}]
+    if messages is not None:
+        sys = f"{_KISS_FILE_HINT}\n\n---\n\n# Carpeta del agente\n\n{context}"
+        msgs: list[dict] = []
+        for msg in messages:
+            if not isinstance(msg, dict):
+                continue
+            role, c = msg.get("role"), msg.get("content")
+            if role in ("user", "assistant") and isinstance(c, str):
+                msgs.append({"role": role, "content": c})
+    else:
+        sys = _KISS_FILE_HINT
+        ut = f"{context}\n\n---\n\nUSER_PROMPT:\n{prompt}"
+        msgs = [{"role": "user", "content": ut}]
     to = int(os.environ.get("KISS_BASH_TIMEOUT", "120"))
     fin = ""
     for _ in range(48):
-        pl: dict = {"model": m, "max_tokens": mt, "messages": msgs, "system": _KISS_FILE_HINT}
+        pl: dict = {"model": m, "max_tokens": mt, "messages": msgs, "system": sys}
         if tools:
             pl["tools"] = tools
         if mcp:
@@ -324,4 +425,4 @@ def call_anthropic(*, prompt: str, context: str, agent_dir: Path | None = None, 
         msgs += [{"role": "assistant", "content": content}, {"role": "user", "content": tr}]
     text = fin or "(sin texto en output)"
     writes, display = _kiss_writes_bundle(text, "anthropic")
-    return {"final": True, "message": display[:2000], "writes": writes}
+    return {"final": True, "message": display[: _reply_max_chars()], "writes": writes}

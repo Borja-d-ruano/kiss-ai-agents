@@ -1,8 +1,3 @@
-He encontrado una opción de piso en Oviedo:
+La visita al inmueble con referencia **RK-DEMO-1** ha sido confirmada para el **martes 8 de abril de 2026 a las 10:00**. 
 
-1. **Piso demo en Oviedo**
-   - **Habitaciones:** 3
-   - **Precio:** 189,000€
-   - **Ver propiedad:** [Ver propiedad](https://rkcompradores.alt-94.dev/propiedades/1001)
-
-Si estás interesado en obtener más información o programar una visita, házmelo saber.
+Si necesitas más información o tienes alguna otra consulta, no dudes en decírmelo.
