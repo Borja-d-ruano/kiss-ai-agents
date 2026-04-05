@@ -463,6 +463,7 @@ Implementación: `md_io.resolve_tools_config`.
    - Anthropic: `anthropic_mcp_servers` ← entrada ampliada con `url` si existe
 5. Si el parse falla y existe `normalizer(callable)` (LLM del proveedor activo que devuelve JSON limpio), **una** reintento.
 6. Si sigue fallando: crear `output/tools-md-invalid.md` y retornar `{}` (sin tools MCP declaradas).
+7. Si el parse tiene éxito: aplicar **`include` / `includes`** (§14.5.1), **deduplicar** entradas MCP y normalizar **`anthropic_skills`** (§14.5.2).
 
 **OpenAI Remote MCP:** `_normalize_openai_mcp_tools` exige mapeo a `server_label` + `server_url` cuando `type` es `mcp`.
 
