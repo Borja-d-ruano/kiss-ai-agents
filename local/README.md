@@ -1,5 +1,7 @@
 # KISS Agents — local
 
+Tutoriales (no técnico + apéndice para IA): [`../docs/README.md`](../docs/README.md).
+
 ## Requisitos
 
 - Python 3.9+ (usa `zoneinfo`; en Windows 3.9+ incluye tzdata cuando hace falta).

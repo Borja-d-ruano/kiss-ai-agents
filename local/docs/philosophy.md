@@ -40,6 +40,6 @@ Siguiendo [KISS_agents-analisis-y-propuesta.md](../../../../analisis-docs/KISS_a
    - **Ejecutar** código en el **proveedor** (OpenAI Code Interpreter / Shell, Anthropic `code_execution` / bash con `cwd` en la carpeta del agente). KISS no evalúa `exec()` del usuario en el runner por defecto (riesgo y filosofía: no segundo intérprete de negocio en tu proceso).
 
 3. **MCP remoto** (ya previsto en `tools.md`)  
-   Misma idea: el conector habla con un servidor externo; tu código solo reenvía. El transporte es HTTP (p. ej. Streamable MCP). Integraciones como **Hopx** que publican MCP por **stdio** (`uvx hopx-mcp`) no encajan directamente con ese `url`: para agentes KISS la fachada HTTP vive fuera del núcleo `runtime/`, en el Worker Cloudflare [`code-executor-mcp`](../../code-executor-mcp/); detalle en [`mcp-hopx.md`](mcp-hopx.md).
+   Misma idea: el conector habla con un servidor externo; tu código solo reenvía. El transporte es HTTP (p. ej. Streamable MCP). Integraciones como **Hopx** que publican MCP por **stdio** (`uvx hopx-mcp`) no encajan directamente con ese `url`: para agentes KISS la fachada HTTP vive fuera del núcleo `runtime/`, en el Worker Cloudflare [`cloud/code-executor-mcp`](../cloud/code-executor-mcp/); detalle en [`mcp-hopx.md`](mcp-hopx.md).
 
 Con esto “cualquier negocio” añade **markdown + JSON de tools + scripts opcionales en `input/`**; el runtime solo añade **primitivas de transporte** acotadas, no reglas de RK ni de otro vertical.

@@ -19,7 +19,7 @@ Referencias: [README hopx-ai/mcp](https://github.com/hopx-ai/mcp/blob/main/READM
 
 ### 2. Agentes KISS (`tools.md` con URL)
 
-Despliega el Worker en **[`code-executor-mcp`](../../code-executor-mcp/)** (Cloudflare). Expone `/mcp` (Streamable HTTP) y, por dentro, llama a la **API HTTP de Hopx** (`https://api.hopx.dev` por defecto) con la clave solo en **secretos del Worker** (`wrangler secret put HOPX_API_KEY`). En `tools.md` del agente va solo la **URL pública** del Worker, nunca la API key.
+Despliega el Worker en **[`cloud/code-executor-mcp`](../cloud/code-executor-mcp/)** (Cloudflare). Expone `/mcp` (Streamable HTTP) y, por dentro, llama a la **API HTTP de Hopx** (`https://api.hopx.dev` por defecto) con la clave solo en **secretos del Worker** (`wrangler secret put HOPX_API_KEY`). En `tools.md` del agente va solo la **URL pública** del Worker, nunca la API key.
 
 Ejemplo neutral:
 
@@ -51,7 +51,7 @@ Resumen alineado con el [README](https://github.com/hopx-ai/mcp/blob/main/README
 - **Ficheros:** `file_read`, `file_write`, `file_list`, …
 - **Comandos:** `run_command`, …
 
-El Worker en `code-executor-mcp` puede exponer solo un subconjunto (p. ej. `execute_code_isolated`) para mantener la superficie acotada; los nombres y argumentos conviene mantenerlos alineados con el README para que los prompts no diverjan.
+El Worker en `cloud/code-executor-mcp` puede exponer solo un subconjunto (p. ej. `execute_code_isolated`) para mantener la superficie acotada; los nombres y argumentos conviene mantenerlos alineados con el README para que los prompts no diverjan.
 
 ## Límites y seguridad (Hopx)
 

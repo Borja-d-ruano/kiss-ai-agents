@@ -5,7 +5,7 @@ Cloudflare Worker: servidor MCP remoto (Streamable HTTP en `/mcp`) que expone `e
 ## Desarrollo local
 
 ```bash
-cd "KISS Agents/code-executor-mcp"
+cd "KISS Agents/cloud/code-executor-mcp"
 npm install
 cp .dev.vars.example .dev.vars   # rellena HOPX_API_KEY
 npm start

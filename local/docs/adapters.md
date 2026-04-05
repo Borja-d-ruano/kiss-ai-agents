@@ -47,7 +47,7 @@ Por filosofía del proyecto, la **configuración declarativa** de MCP vive en `t
 
 Referencias: [Shell](https://developers.openai.com/api/docs/guides/tools-shell), [Code Interpreter](https://developers.openai.com/api/docs/guides/tools-code-interpreter), [Remote MCP](https://developers.openai.com/api/docs/guides/tools-remote-mcp).
 
-Para **Hopx** (ejecución aislada en la nube): el servidor MCP PyPI es **stdio**; con KISS y `url` en `tools.md` se usa el Worker en [`code-executor-mcp`](../../code-executor-mcp/) — ver [`mcp-hopx.md`](mcp-hopx.md). **Shell en modo `local`** corre en tu sistema con los mismos permisos que el proceso de `main.py`; no sustituye un sandbox como Hopx.
+Para **Hopx** (ejecución aislada en la nube): el servidor MCP PyPI es **stdio**; con KISS y `url` en `tools.md` se usa el Worker en [`cloud/code-executor-mcp`](../cloud/code-executor-mcp/) — ver [`mcp-hopx.md`](mcp-hopx.md). **Shell en modo `local`** corre en tu sistema con los mismos permisos que el proceso de `main.py`; no sustituye un sandbox como Hopx.
 
 ## Anthropic (Messages API)
 

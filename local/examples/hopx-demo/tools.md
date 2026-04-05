@@ -1,6 +1,6 @@
 # Herramientas
 
-Sustituye la URL por la de tu Worker desplegado (`npx wrangler deploy` en `code-executor-mcp/`). La API key de Hopx va solo en el Worker (`wrangler secret put HOPX_API_KEY`), no aquí.
+Sustituye la URL por la de tu Worker desplegado (`npx wrangler deploy` en `cloud/code-executor-mcp/`). La API key de Hopx va solo en el Worker (`wrangler secret put HOPX_API_KEY`), no aquí.
 
 ```json
 {

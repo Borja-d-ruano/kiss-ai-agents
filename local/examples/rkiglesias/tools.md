@@ -26,7 +26,7 @@ El bloque JSON de abajo sigue siendo el canal **MCP** si usas `python main.py ru
 
 Sustituye `NOMBRE` y `URL` por los del tenant. El `type` suele ser `mcp` (OpenAI) y se reutiliza en el mapeo.
 
-**Hopx (ejecución aislada):** despliega el Worker en `code-executor-mcp` (raíz del repo KISS Agents), pon `HOPX_API_KEY` con Wrangler y usa la URL pública del Worker (no la API key en markdown). Ejemplo comentado:
+**Hopx (ejecución aislada):** despliega el Worker en `cloud/code-executor-mcp`, pon `HOPX_API_KEY` con Wrangler y usa la URL pública del Worker (no la API key en markdown). Ejemplo comentado:
 
 ```json
 [
