@@ -15,9 +15,9 @@ Presupuesto orientativo (plan original):
 | Núcleo runtime (`*.py` salvo `http_server`) | ≤ 250 |
 | `http_server.py` | ≤ 120 |
 | Scripts shell | ≤ 80 |
-| **Total Python + shell** | **≤ 1000** |
+| **Total Python + shell** | **≤ 1000** (orientativo; último conteo manual ~**1046**) |
 
-Los `.md` de docs y ejemplos **no** cuentan contra el límite estricto.
+Los `.md` de docs y ejemplos **no** cuentan contra el límite estricto. Si el total supera el presupuesto, recortar o documentar en ADR (véase [`philosophy.md`](philosophy.md)).
 
 ## Plan de pruebas manual
 

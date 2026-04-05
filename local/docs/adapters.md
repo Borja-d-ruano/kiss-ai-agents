@@ -19,17 +19,32 @@ Por filosofía del proyecto, la **configuración declarativa** de MCP vive en `t
 {
   "openai_mcp_tools": [],
   "anthropic_mcp_servers": [],
-  "mcp_servers": []
+  "mcp_servers": [],
+  "include": "input/shared-mcp.json"
 }
 ```
 
 `mcp_servers` (opcional) es lista neutral `{ "name", "url", "type" }`; se **mapea** a entradas en las dos listas de proveedor. Para **OpenAI Responses** (Remote MCP), `llm.py` normaliza a `server_label` + `server_url` y el bucle sigue tras `mcp_approval_request` aunque `status` sea `completed`. El runtime, **al arrancar cada `run`**:
 
 1. extrae el primer bloque ` ```json ... ``` ` de `tools.md`,
-2. parsea y valida listas,
-3. aplica `mcp_servers` → openai / anthropic,
-4. si el JSON falla, **una** normalización con el proveedor activo (si hay),
-5. si sigue fallando, escribe `output/tools-md-invalid.md` y usa config vacía.
+2. resuelve `include` o `includes` (ficheros `.json` bajo la carpeta del agente, sin salir del árbol; profundidad máx. 5; dedupe de entradas MCP por `name`+`url`),
+3. parsea y valida listas,
+4. aplica `mcp_servers` → openai / anthropic,
+5. opcional: valida `anthropic_skills` (máx. 8 entradas con `type`, `skill_id`, `version?`) para Agent Skills de Anthropic,
+6. si el JSON falla, **una** normalización con el proveedor activo (si hay),
+7. si sigue fallando, escribe `output/tools-md-invalid.md` y usa config vacía.
+
+### `include` / `includes` (JSON compartido)
+
+- Clave **`include`**: string con ruta relativa a un `.json` (p. ej. `"input/pack-mcp.json"`).
+- Clave **`includes`**: lista de rutas; se procesan en orden.
+- Solo se fusionan las listas **`mcp_servers`**, **`openai_mcp_tools`** y **`anthropic_mcp_servers`** desde los ficheros incluidos; el resto de claves de esos ficheros se ignoran. Las claves propias del bloque principal de `tools.md` (p. ej. **`anthropic_skills`**) aplican al **raíz** del agente, no a los includes.
+
+### Anthropic Agent Skills (`anthropic_skills`)
+
+Lista opcional en el JSON de `tools.md`, hasta **8** ítems: `{ "type": "anthropic"|"custom", "skill_id": "pptx"|"skill_…", "version": "latest"|… }`. El runtime envía `container.skills` en Messages, fuerza la herramienta **code execution** si hace falta y añade betas `code-execution-2025-08-25` y `skills-2025-10-02` sin duplicar las que ya pongas en `KISS_ANTHROPIC_BETA_HEADERS`. Requisitos y retención de datos: [guía Skills API](https://docs.anthropic.com/en/api/skills-guide).
+
+**OpenAI:** no hay equivalente 1:1 a Agent Skills en Responses; reutiliza **`include`** para compartir el mismo JSON de MCP entre agentes, o documenta procedimientos en `prompt.md` / `agent.md`.
 
 ## OpenAI (Responses API)
 

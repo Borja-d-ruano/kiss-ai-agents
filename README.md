@@ -2,7 +2,7 @@
 
 **Agents as folders of Markdown** — a deliberately minimal **anti-framework**: a tiny **stdlib Python** runtime loads your agent directory, sends context to an AI provider (or a **stub**), applies file `**writes`**, and lets you trigger work with **cron** + `POST /api/tick` or the CLI.
 
-**Design claim:** replace stacks like LangChain for orchestration with **under ~1000 lines** (curretnly 880 lines) of executable code (Python + shell), while your **business logic stays in `.md` and data files**, not in the framework.
+**Design claim:** replace stacks like LangChain for orchestration with a **small stdlib footprint** (currently **1046** lines: **1024** across `local/runtime/*.py` plus **22** in `local/scripts/*.sh`; run `wc -l local/runtime/*.py local/scripts/*.sh` from the repo root), while your **business logic stays in** `.md` **and data files**, not in the framework.
 
 ---
 

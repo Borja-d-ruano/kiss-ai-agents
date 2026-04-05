@@ -75,6 +75,15 @@ def _ant_hdr(beta: str) -> dict[str, str]:
     if beta.strip():
         h["anthropic-beta"] = beta.strip()
     return h
+def _ant_beta_merge_list(parts: list[str], *add: str) -> list[str]:
+    seen = {p.lower() for p in parts if p}
+    out = list(parts)
+    for a in add:
+        if not a or a.lower() in seen:
+            continue
+        seen.add(a.lower())
+        out.append(a)
+    return out
 def _walk_txt(o: Any, acc: list[str]) -> None:
     if isinstance(o, dict):
         if o.get("type") in ("output_text", "text") and "text" in o:
@@ -298,14 +307,19 @@ def _bash(cmd: str, to: int, ad: Path | None) -> str:
     except subprocess.TimeoutExpired:
         return f"Error: timeout tras {to}s"
 def _ant_build(cfg: dict) -> tuple[list[dict], list[dict], str]:
-    t, ms, b = [], [], []
+    t, ms = [], []
+    skl = cfg.get("anthropic_skills")
+    has_skills = isinstance(skl, list) and len(skl) > 0
     fl = os.environ.get("KISS_ANTHROPIC_TOOLS", "bash,code_execution,mcp").lower()
     if "bash" in fl:
         t.append({"type": "bash_20250124", "name": "bash"})
     if "code_execution" in fl:
         t.append({"type": "code_execution_20250825", "name": "code_execution"})
+    elif has_skills:
+        t.append({"type": "code_execution_20250825", "name": "code_execution"})
     if "mcp" in fl:
         ms = cfg.get("anthropic_mcp_servers") or []
+    b: list[str] = []
     if ms:
         b.append("mcp-client-2025-11-20")
         for s in ms:
@@ -314,6 +328,8 @@ def _ant_build(cfg: dict) -> tuple[list[dict], list[dict], str]:
     ex = os.environ.get("KISS_ANTHROPIC_BETA_HEADERS", "").strip()
     if ex:
         b.extend(x.strip() for x in ex.split(",") if x.strip())
+    if has_skills:
+        b = _ant_beta_merge_list(b, "code-execution-2025-08-25", "skills-2025-10-02")
     return t, ms, ",".join(b)
 def call_anthropic(
     *, prompt: str | None = None, context: str, messages: list[dict] | None = None, agent_dir: Path | None = None, tools_cfg: dict | None = None,
@@ -322,6 +338,8 @@ def call_anthropic(
     mt, ad = int(os.environ.get("KISS_ANTHROPIC_MAX_TOKENS", "8192")), Path(agent_dir).resolve() if agent_dir else None
     cfg = tools_cfg if isinstance(tools_cfg, dict) else {}
     tools, mcp, beta = _ant_build(cfg)
+    skills = cfg.get("anthropic_skills")
+    skills = skills if isinstance(skills, list) and skills else None
     if messages is not None:
         sys = f"{_HINT}\n\n---\n\n# Carpeta del agente\n\n{context}"
         msgs = [{"role": r, "content": c} for msg in messages if isinstance(msg, dict) and (r := msg.get("role")) in ("user", "assistant") and isinstance(c := msg.get("content"), str)]
@@ -335,6 +353,8 @@ def call_anthropic(
             pl["tools"] = tools
         if mcp:
             pl["mcp_servers"] = mcp
+        if skills:
+            pl["container"] = {"skills": skills[:8]}
         resp = _post("https://api.anthropic.com/v1/messages", pl, _ant_hdr(beta), "Anthropic")
         content = resp.get("content") or []
         fin = "\n".join(str(b.get("text", "")) for b in content if b.get("type") == "text").strip() or fin

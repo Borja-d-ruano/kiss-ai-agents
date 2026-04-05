@@ -116,8 +116,126 @@ def _try_dict_from_json_text(text: str) -> dict | None:
     if not isinstance(o, dict):
         return None
     return _expand_neutral(o)
+LIST_MERGE_KEYS = ("mcp_servers", "openai_mcp_tools", "anthropic_mcp_servers")
+MAX_TOOLS_INCLUDE_DEPTH = 5
+def _tools_include_paths(o: dict) -> list[str]:
+    inc = o.get("include", o.get("includes"))
+    if isinstance(inc, str) and inc.strip():
+        return [inc.strip()]
+    if isinstance(inc, list):
+        return [str(x).strip() for x in inc if str(x).strip()]
+    return []
+def _safe_tools_json_path(folder: Path, rel: str) -> Path | None:
+    folder = folder.resolve()
+    if rel.startswith(("/", "\\")):
+        return None
+    if ".." in Path(rel).parts:
+        return None
+    cand = (folder / rel).resolve()
+    try:
+        cand.relative_to(folder)
+    except ValueError:
+        return None
+    if cand.suffix.lower() != ".json" or not cand.is_file():
+        return None
+    return cand
+def _empty_merge_lists() -> dict[str, list]:
+    return {k: [] for k in LIST_MERGE_KEYS}
+def _merge_list_fields(acc: dict[str, list], src: dict) -> None:
+    for k in LIST_MERGE_KEYS:
+        v = src.get(k)
+        if isinstance(v, list):
+            acc.setdefault(k, [])
+            acc[k].extend(v)
+def _mcp_dedupe_key(it: dict) -> tuple[str, str] | None:
+    n = str(it.get("name", "")).strip().lower()
+    u = str(it.get("url", it.get("server_url", ""))).strip().lower()
+    if not n and not u:
+        return None
+    return (n, u)
+def _dedupe_mcp_lists(d: dict) -> dict:
+    out = dict(d)
+    for k in LIST_MERGE_KEYS:
+        lst = out.get(k)
+        if not isinstance(lst, list):
+            continue
+        seen: set[tuple[str, str]] = set()
+        nl: list = []
+        for it in lst:
+            if not isinstance(it, dict):
+                continue
+            dk = _mcp_dedupe_key(it)
+            if dk is None or dk not in seen:
+                if dk is not None:
+                    seen.add(dk)
+                nl.append(it)
+        out[k] = nl
+    return out
+def _trim_anthropic_skills(o: dict) -> dict:
+    out = dict(o)
+    sk = out.get("anthropic_skills")
+    if not isinstance(sk, list):
+        out.pop("anthropic_skills", None)
+        return out
+    good: list[dict] = []
+    for it in sk:
+        if len(good) >= 8:
+            break
+        if not isinstance(it, dict):
+            continue
+        t = str(it.get("type", "")).strip()
+        sid = str(it.get("skill_id", "")).strip()
+        if not t or not sid:
+            continue
+        entry: dict[str, str] = {"type": t, "skill_id": sid}
+        ver = it.get("version")
+        vs = str(ver).strip() if ver is not None else ""
+        if vs:
+            entry["version"] = vs
+        good.append(entry)
+    out["anthropic_skills"] = good
+    return out
+def _finalize_tools_dict(d: dict) -> dict:
+    return _trim_anthropic_skills(_dedupe_mcp_lists(d))
+def _tools_merge_object_lists(folder: Path, o: dict, depth: int, visiting: set[Path]) -> dict[str, list]:
+    acc = _empty_merge_lists()
+    for rel in _tools_include_paths(o):
+        child = _safe_tools_json_path(folder, rel)
+        if child is None:
+            continue
+        sub = _tools_merge_json_file(folder, child, depth + 1, visiting)
+        _merge_list_fields(acc, sub)
+    local = {k: v for k, v in o.items() if k not in ("include", "includes")}
+    loc_exp = _expand_neutral(_clean_lists(local))
+    _merge_list_fields(acc, {k: loc_exp.get(k, []) for k in LIST_MERGE_KEYS})
+    return acc
+def _tools_merge_json_file(folder: Path, path: Path, depth: int, visiting: set[Path]) -> dict[str, list]:
+    path = path.resolve()
+    if depth > MAX_TOOLS_INCLUDE_DEPTH or path in visiting:
+        return _empty_merge_lists()
+    visiting.add(path)
+    try:
+        try:
+            raw = path.read_text(encoding="utf-8")
+            o = json.loads(raw)
+        except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+            return _empty_merge_lists()
+        if not isinstance(o, dict):
+            return _empty_merge_lists()
+        return _tools_merge_object_lists(folder, o, depth, visiting)
+    finally:
+        visiting.discard(path)
+def _tools_resolve_includes(folder: Path, o: dict) -> dict:
+    visiting: set[Path] = set()
+    lists_acc = _tools_merge_object_lists(folder, o, 0, visiting)
+    local = {k: v for k, v in o.items() if k not in ("include", "includes")}
+    loc_exp = _expand_neutral(_clean_lists(local))
+    out = {k: v for k, v in loc_exp.items() if k not in LIST_MERGE_KEYS}
+    for k in LIST_MERGE_KEYS:
+        out[k] = lists_acc[k]
+    return out
 def resolve_tools_config(agent_dir: Path | str | None, normalizer=None) -> dict:
-    """Una pasada: parse + neutral mcp_servers → listas por proveedor; si falla, 1× normalizer o error en output/."""
+    """Parse tools.md JSON, optional include/includes → .json bajo el agente, merge MCP lists, dedupe, anthropic_skills ≤8."""
     if not agent_dir:
         return {}
     folder = Path(agent_dir)
@@ -128,16 +246,22 @@ def resolve_tools_config(agent_dir: Path | str | None, normalizer=None) -> dict:
     cand = _json_block(raw)
     if not cand.strip():
         return {}
-    r = _try_dict_from_json_text(cand)
-    if r is not None:
-        return r
+    try:
+        o = json.loads(cand)
+    except json.JSONDecodeError:
+        o = None
+    if isinstance(o, dict):
+        return _finalize_tools_dict(_tools_resolve_includes(folder, o))
     if callable(normalizer):
         try:
             fx = normalizer(raw)
             if isinstance(fx, str) and fx.strip():
-                r2 = _try_dict_from_json_text(fx.strip())
-                if r2 is not None:
-                    return r2
+                try:
+                    o2 = json.loads(fx.strip())
+                except json.JSONDecodeError:
+                    o2 = None
+                if isinstance(o2, dict):
+                    return _finalize_tools_dict(_tools_resolve_includes(folder, o2))
         except Exception:
             pass
     outd = folder / "output"

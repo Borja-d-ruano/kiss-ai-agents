@@ -423,6 +423,17 @@ Implementation: `md_io.resolve_tools_config`.
 
 **OpenAI Remote MCP:** `_normalize_openai_mcp_tools` maps to `server_label` + `server_url` when `type` is `mcp`.
 
+### 14.5.1 Shared MCP JSON (`include` / `includes`)
+
+- In the same ` ```json ` block you may set **`include`** (a single string) or **`includes`** (array of strings): paths to `.json` files **relative to the agent folder**, staying inside that tree (no `..` path segments, no absolute paths).
+- Each included file is processed recursively up to depth **5**. Only **`mcp_servers`**, **`openai_mcp_tools`**, and **`anthropic_mcp_servers`** are merged from included files; other keys in those files are ignored.
+- Merge order: all included branches first (in declaration order), then the lists from the **root** `tools.md` JSON. **Duplicates** with the same lowercased `name` and `url` / `server_url` are dropped (**first** wins).
+
+### 14.5.2 Agent Skills (Anthropic) vs OpenAI
+
+- **Anthropic** [Agent Skills](https://docs.anthropic.com/en/api/skills-guide): optional array **`anthropic_skills`** in the **root** `tools.md` JSON (not merged from `include` files), up to **8** objects: `{ "type": "anthropic" | "custom", "skill_id": "<id>", "version": "latest" | … }`. KISS sends **`container.skills`** on Messages, ensures **code execution** is in `tools` if needed, and adds beta headers `code-execution-2025-08-25` and `skills-2025-10-02`, merged with `KISS_ANTHROPIC_BETA_HEADERS` without duplicates.
+- **OpenAI:** there is no equivalent Skills shape in `llm.call_openai`. Reuse **`include`** / **`includes`** to share MCP JSON across agents, and put product-specific instructions in **`prompt.md`** / **`agent.md`**. Capabilities such as Remote MCP and Code Interpreter remain the OpenAI-side options.
+
 ### 14.6 OpenAI Responses API (`llm.call_openai`)
 
 - **POST** `https://api.openai.com/v1/responses` with `input`, `model`, `tools`, limits.
