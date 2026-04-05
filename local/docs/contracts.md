@@ -30,8 +30,8 @@ Rutas con `..` o absolutas se ignoran. Lo escrito solo en el **sandbox** del pro
 
 ## Carpetas
 
-- `input/` — entradas del usuario o adjuntos.
-- `output/` — artefactos generados (el modelo escribe aquí vía `writes`).
+- `input/` — entradas del usuario o adjuntos. El runner incluye en el contexto, sin interpretarlos, los ficheros con extensión `.md`, `.txt`, `.json`, `.csv` y **`.py`** (el texto se envía tal cual al modelo; **no** se ejecuta Python en el host KISS). La ejecución corresponde a herramientas del proveedor (p. ej. code execution, shell) si el modelo las usa y el adaptador las tiene habilitadas.
+- `output/` — artefactos generados (el modelo escribe aquí vía `writes`). Los `.py` que aparezcan aquí también se reinyectan en la siguiente carga como contexto legible.
 
 ## Respuesta del modelo (contrato técnico)
 

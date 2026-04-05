@@ -1,11 +1,19 @@
-No tengo un historial completo fuera de lo que está guardado en esta carpeta.
+Puedo ayudarte a:
 
-Según `memory.md`, antes me dijiste:
-- “Me gustan las manzanas.”
+- responder preguntas y conversar
+- recordar lo que quede guardado en `memory.md`
+- leer lo que haya en esta carpeta y basarme en eso
+- redactar/resumir contenido en markdown
+- si me lo pides explícitamente, generar el resumen de correos en `output/` usando el flujo de este proyecto
 
-Y también consta una consulta anterior tuya:
-- “que te he dicho antes? y como me llamo?.”
+Limitaciones aquí:
+- no debo inventar datos que no estén en los archivos o herramientas
+- en este entorno de ejemplo, el correo está en modo stub, así que no hay lectura/envío real configurado
 
-Sobre cómo te llamas: en lo que has pasado en este turno no aparece tu nombre guardado en `memory.md`. Así que no puedo afirmarlo solo con la memoria actual.
+Si quieres, por ejemplo:
+- “¿qué recuerdas de mí?”
+- “hazme un resumen de los correos”
+- “apunta en memoria que me gusta el café”
+- “revisa estos archivos y dime qué hay”
 
 final: true

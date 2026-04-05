@@ -64,4 +64,9 @@ Variables detalladas: [`docs/adapters.md`](docs/adapters.md).
 
 - **Varios ficheros en disco:** OpenAI/Anthropic incluyen la convención `kiss-write` en sistema; el adaptador vuelca esos bloques en `writes` además de `output/*-last.md`. Ver [`docs/contracts.md`](contracts.md). El **stub** no genera `kiss-write` (solo sus `writes` fijos).
 
+## Ejemplos
+
+- [`examples/daily-email-summary`](examples/daily-email-summary) — resumen de correo y memoria con `kiss-write`.
+- [`examples/rkiglesias`](examples/rkiglesias) — MaRK; tools HTTP ejecutables con `run_rk.py` dentro de la carpeta del agente (ver [`examples/rkiglesias/CONEXION.md`](examples/rkiglesias/CONEXION.md)).
+
 Compat: `KISS_REAL_MODEL=1` sin `KISS_PROVIDER` → se usa OpenAI.

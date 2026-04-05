@@ -1,0 +1,235 @@
+{
+  "_meta": {
+    "origin": "saas-platform-rk-all-fresh/rag-api/mcp_providers/property_search/actions",
+    "seed_reference": "agents/management/commands/seed_buyer_agent.py — BUYER_TOOL_NAMES (9 herramientas)",
+    "ui_parity": "Agent Studio → herramientas External del agente comprador; sitio público https://rkcompradores.alt-94.dev",
+    "notes": [
+      "Estas definiciones copian name, display_name, description e input_schema de las clases BaseAction en el SaaS.",
+      "En runtime, el nombre de invocación del LLM coincide con `name` (snake_case).",
+      "search_properties: además existe un wrapper LangChain que acepta `query` string; el MCPAction declara campos estructurados — la plataforma unifica en la ejecución."
+    ]
+  },
+  "tools": [
+    {
+      "name": "search_properties",
+      "display_name": "Search Properties",
+      "description": "Search for properties using configurable filters",
+      "input_schema": {
+        "city": {"type": "string", "description": "City to search in"},
+        "property_type": {"type": "string", "description": "Type of property"},
+        "bedrooms": {"type": "integer", "description": "Number of bedrooms"},
+        "bathrooms": {"type": "integer", "description": "Number of bathrooms"},
+        "min_price": {"type": "integer", "description": "Minimum price"},
+        "max_price": {"type": "integer", "description": "Maximum price"},
+        "operation": {"type": "string", "description": "Venta or Alquiler"},
+        "features": {"type": "array", "description": "Desired features"}
+      },
+      "output_schema": {
+        "properties": {"type": "array"},
+        "count": {"type": "integer"},
+        "total": {"type": "integer"}
+      }
+    },
+    {
+      "name": "property_details",
+      "display_name": "Property Details",
+      "description": "Get detailed information about a specific property by ID",
+      "input_schema": {
+        "ref": {
+          "type": "string",
+          "description": "Property ref code to get details for (used for searches)"
+        }
+      },
+      "output_schema": {
+        "property": {"type": "object"},
+        "has_agent": {"type": "boolean"},
+        "agent_info": {"type": "object"}
+      }
+    },
+    {
+      "name": "property_interest",
+      "display_name": "Property Interest",
+      "description": "Handle user interest in a specific property from search results",
+      "input_schema": {
+        "property_index": {
+          "type": "integer",
+          "description": "Index of property in search results (1-based)"
+        },
+        "external_id": {
+          "type": "string",
+          "description": "Property External ID if resolved"
+        }
+      },
+      "output_schema": {
+        "property": {"type": "object"},
+        "has_agent": {"type": "boolean"},
+        "agent_info": {"type": "object"}
+      }
+    },
+    {
+      "name": "search_contact",
+      "display_name": "Search Contact",
+      "description": "Search for contacts by phone number in iagestión",
+      "input_schema": {
+        "telefono": {
+          "type": "string",
+          "description": "Phone number to search for (required). Extract from user message - look for 9-15 digit numbers. Example: 'Daniel 571111111' → telefono='571111111'",
+          "required": true
+        }
+      },
+      "output_schema": {
+        "contactos": {"type": "array"},
+        "total": {"type": "integer"},
+        "message": {"type": "string"}
+      }
+    },
+    {
+      "name": "create_contact",
+      "display_name": "Create Contact",
+      "description": "Create a new contact in iagestión with name, phone, and/or email",
+      "input_schema": {
+        "nombre": {"type": "string", "description": "Contact name (required)"},
+        "telefono": {
+          "type": "string",
+          "description": "Contact phone (required if no email)"
+        },
+        "email": {
+          "type": "string",
+          "description": "Contact email (required if no phone)"
+        },
+        "apellidos": {"type": "string", "description": "Contact last name"},
+        "idAgente": {
+          "type": "string",
+          "description": "Agent ID who introduces the contact"
+        },
+        "observaciones": {
+          "type": "string",
+          "description": "Additional observations"
+        }
+      },
+      "output_schema": {
+        "id_contacto": {"type": "string"},
+        "id_usuario": {"type": "string"},
+        "message": {"type": "string"}
+      }
+    },
+    {
+      "name": "create_demand",
+      "display_name": "Create Demand",
+      "description": "Create a new demand in iagestión for a property with contact information",
+      "input_schema": {
+        "id_inmueble": {
+          "type": "string",
+          "description": "Property ID in iagestión (external_id, required)"
+        },
+        "id_contacto": {
+          "type": "string",
+          "description": "Contact ID in iagestión (recommended - avoids SQL errors). If provided, nombre/email/telefono are not required"
+        },
+        "telefono": {
+          "type": "string",
+          "description": "Contact phone (required only if no id_contacto). When id_contacto is present, telefono is optional and may be auto-filled from context"
+        },
+        "nombre": {
+          "type": "string",
+          "description": "Contact full name (required only if no id_contacto)"
+        },
+        "email": {
+          "type": "string",
+          "description": "Contact email (optional, can be used instead of nombre if no id_contacto)"
+        },
+        "alias": {"type": "string", "description": "Demand alias or title"},
+        "observaciones": {"type": "string", "description": "Additional observations"}
+      },
+      "output_schema": {
+        "id_demanda": {"type": "string"},
+        "id_usuario": {"type": "string"},
+        "message": {"type": "string"}
+      }
+    },
+    {
+      "name": "check_agent_availability",
+      "display_name": "Check Agent Availability",
+      "description": "Check agent availability for a specific date",
+      "input_schema": {
+        "agent_id": {
+          "type": "string",
+          "description": "Agent ID to check availability for"
+        },
+        "date": {
+          "type": "string",
+          "description": "Date to check availability (YYYY-MM-DD format)"
+        }
+      },
+      "output_schema": {
+        "agent_id": {"type": "string"},
+        "date": {"type": "string"},
+        "available_slots": {"type": "array"},
+        "busy_slots": {"type": "array"},
+        "total_slots": {"type": "integer"}
+      }
+    },
+    {
+      "name": "schedule_visit",
+      "display_name": "Schedule Visit",
+      "description": "Schedule a visit with an agent for a specific property",
+      "input_schema": {
+        "property_external_id": {
+          "type": "string",
+          "description": "Property External ID (6-7 digits)"
+        },
+        "agent_id": {"type": "string", "description": "Agent ID to schedule with"},
+        "date": {
+          "type": "string",
+          "description": "Date for the visit (YYYY-MM-DD format)"
+        },
+        "time": {
+          "type": "string",
+          "description": "Time for the visit (HH:MM format)"
+        },
+        "id_demanda": {
+          "type": "string",
+          "description": "Demand ID to associate with the visit (optional, from context)"
+        },
+        "id_contacto": {
+          "type": "string",
+          "description": "Contact ID to associate with the visit (optional, from context)"
+        },
+        "user_name": {"type": "string", "description": "User name (optional)"},
+        "user_phone": {
+          "type": "string",
+          "description": "User phone number (optional)"
+        },
+        "title": {"type": "string", "description": "Title for the visit"},
+        "description": {
+          "type": "string",
+          "description": "Description for the visit"
+        }
+      },
+      "output_schema": {
+        "gestion_id": {"type": "string"},
+        "property_id": {"type": "string"},
+        "agent_id": {"type": "string"},
+        "date": {"type": "string"},
+        "time": {"type": "string"},
+        "status": {"type": "string"},
+        "id_demanda": {"type": "string"},
+        "id_contacto": {"type": "string"},
+        "message": {"type": "string"}
+      }
+    },
+    {
+      "name": "cancel_visit",
+      "display_name": "Cancel Visit",
+      "description": "Cancel or delete a scheduled visit by gestion ID",
+      "input_schema": {
+        "gestion_id": {"type": "string", "description": "Gestion ID to cancel"}
+      },
+      "output_schema": {
+        "gestion_id": {"type": "string"},
+        "status": {"type": "string"},
+        "message": {"type": "string"}
+      }
+    }
+  ]
+}

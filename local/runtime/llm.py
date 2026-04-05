@@ -181,10 +181,159 @@ def _oai_approve(resp: dict) -> list[dict]:
     return out
 
 
+def _oai_local_shell_enabled() -> bool:
+    if os.environ.get("KISS_OPENAI_DISABLE_SHELL") in ("1", "true", "yes"):
+        return False
+    return (os.environ.get("KISS_OPENAI_SHELL_MODE") or "hosted").strip().lower() == "local"
+
+
+def _oai_shell_tool_entry() -> dict | None:
+    if os.environ.get("KISS_OPENAI_DISABLE_SHELL") in ("1", "true", "yes"):
+        return None
+    mode = (os.environ.get("KISS_OPENAI_SHELL_MODE") or "hosted").strip().lower()
+    if mode in ("off", "none", "false", "0"):
+        return None
+    if mode == "local":
+        return {"type": "shell"}
+    return {"type": "shell", "environment": {"type": "container_auto"}}
+
+
+def _oai_walk_shell_calls(o: Any, acc: list[dict]) -> None:
+    if isinstance(o, dict):
+        if o.get("type") == "shell_call":
+            acc.append(o)
+        for v in o.values():
+            _oai_walk_shell_calls(v, acc)
+    elif isinstance(o, list):
+        for x in o:
+            _oai_walk_shell_calls(x, acc)
+
+
+def _oai_run_shell_call(call: dict, agent_dir: Path | None, default_timeout: int) -> dict:
+    """Construye un ítem input `shell_call_output` para Responses API (local shell mode).
+
+    Formato alineado con `ResponseFunctionShellToolCallOutput` (openai-python): `output` es una
+    lista de `{stdout, stderr, outcome}`; `outcome` no va en la raíz del ítem.
+    """
+    call_id = call.get("call_id") or call.get("id")
+    action = call.get("action") if isinstance(call.get("action"), dict) else {}
+    commands = action.get("commands")
+    mol = action.get("max_output_length")
+    if not isinstance(mol, int) or mol <= 0:
+        mol = call.get("max_output_length")
+    if not isinstance(mol, int) or mol <= 0:
+        mol = None
+    timeout_sec = default_timeout
+    tms = action.get("timeout_ms")
+    if tms is not None:
+        try:
+            timeout_sec = max(1, int(tms) // 1000)
+        except (TypeError, ValueError):
+            pass
+    cwd = action.get("working_directory") or os.environ.get("KISS_BASH_CWD")
+    if not cwd and agent_dir:
+        cwd = str(agent_dir.resolve())
+    if not cwd:
+        cwd = os.getcwd()
+    raw_env = action.get("env")
+    full_env = dict(os.environ)
+    if isinstance(raw_env, dict):
+        for k, v in raw_env.items():
+            full_env[str(k)] = str(v)
+
+    def _truncate(so: str, se: str) -> tuple[str, str]:
+        if not mol:
+            return so, se
+        cap = mol
+        if len(so) + len(se) <= cap:
+            return so, se
+        if len(so) >= cap:
+            return so[:cap] + "\n…(truncado, max_output_length)", ""
+        rest = cap - len(so)
+        return so, (se[:rest] + "\n…(truncado, max_output_length)" if se else "")
+
+    chunks: list[dict[str, Any]] = []
+    if isinstance(commands, list) and commands:
+        for cmd in commands:
+            scmd = cmd if isinstance(cmd, str) else json.dumps(cmd)
+            try:
+                p = subprocess.run(
+                    scmd,
+                    shell=True,
+                    cwd=cwd,
+                    capture_output=True,
+                    text=True,
+                    timeout=timeout_sec,
+                    env=full_env,
+                )
+                so, se = _truncate(p.stdout or "", p.stderr or "")
+                rc = 0 if p.returncode in (0, None) else int(p.returncode)
+                chunks.append(
+                    {"stdout": so, "stderr": se, "outcome": {"type": "exit", "exit_code": rc}}
+                )
+            except subprocess.TimeoutExpired:
+                so, se = _truncate("", f"Error: timeout tras {timeout_sec}s")
+                chunks.append({"stdout": so, "stderr": se, "outcome": {"type": "timeout"}})
+                break
+    else:
+        so, se = _truncate(
+            "",
+            "(KISS) shell_call sin `action.commands` reconocible.",
+        )
+        chunks.append(
+            {"stdout": so, "stderr": se, "outcome": {"type": "exit", "exit_code": 1}}
+        )
+
+    out: dict[str, Any] = {"type": "shell_call_output", "output": chunks, "status": "completed"}
+    if call_id:
+        out["call_id"] = str(call_id)
+    if mol is not None:
+        out["max_output_length"] = mol
+    return out
+
+
+def _oai_shell_followups(resp: dict, agent_dir: Path | None) -> list[dict] | None:
+    if not _oai_local_shell_enabled():
+        return None
+    calls: list[dict] = []
+    _oai_walk_shell_calls(resp.get("output"), calls)
+    if not calls:
+        return None
+    to = int(os.environ.get("KISS_BASH_TIMEOUT", "120"))
+    return [_oai_run_shell_call(c, agent_dir, to) for c in calls]
+
+
+def _normalize_openai_mcp_tools(entries: list) -> list[dict]:
+    """OpenAI Responses Remote MCP requiere server_label + server_url (no solo name/url de tools.md)."""
+    out: list[dict] = []
+    for e in entries:
+        if not isinstance(e, dict):
+            continue
+        if str(e.get("type", "mcp")).lower() != "mcp":
+            out.append(e)
+            continue
+        label = e.get("server_label") or e.get("name")
+        surl = e.get("server_url") or e.get("url")
+        if not label or not surl:
+            out.append(e)
+            continue
+        norm: dict = {
+            "type": "mcp",
+            "server_label": str(label).strip(),
+            "server_url": str(surl).strip(),
+        }
+        for k in ("authorization", "allowed_tools", "require_approval"):
+            if k in e:
+                norm[k] = e[k]
+        out.append(norm)
+    return out
+
+
 def _oai_tools(cfg: dict) -> list[dict]:
     o: list[dict] = []
-    if os.environ.get("KISS_OPENAI_DISABLE_SHELL") not in ("1", "true", "yes"):
-        o.append({"type": "shell", "environment": {"type": "container_auto"}})
+    sh = _oai_shell_tool_entry()
+    if sh:
+        o.append(sh)
     if os.environ.get("KISS_OPENAI_ENABLE_CODE_INTERPRETER") in ("1", "true", "yes"):
         o.append(
             {
@@ -195,7 +344,7 @@ def _oai_tools(cfg: dict) -> list[dict]:
                 },
             }
         )
-    o.extend(cfg.get("openai_mcp_tools") or [])
+    o.extend(_normalize_openai_mcp_tools(cfg.get("openai_mcp_tools") or []))
     return o
 
 
@@ -212,23 +361,28 @@ def call_openai(
     sys = f"{base_sys}\n\n{_KISS_FILE_HINT}"
     body = f"{context}\n\n---\n\nUSER_PROMPT:\n{prompt}"
     items: Any = [{"role": "system", "content": sys}, {"role": "user", "content": body}]
+    ad = Path(agent_dir).resolve() if agent_dir else None
     prev, last = None, ""
-    for _ in range(32):
+    for _ in range(64):
         pl: dict = {"model": m, "input": items, "tools": tools}
         if os.environ.get("KISS_OPENAI_STORE_FALSE") in ("1", "true"):
             pl["store"] = False
         if prev:
-            pl = {"model": m, "previous_response_id": prev, "input": items}
+            pl["previous_response_id"] = prev
         resp = _post("https://api.openai.com/v1/responses", pl, _oai_hdr(), "OpenAI")
         prev = resp.get("id") or prev
         last = _oai_txt(resp) or last
-        st = str(resp.get("status", "completed"))
-        if st in ("completed", "failed", "cancelled"):
-            break
         ap = _oai_approve(resp)
         if ap:
             items = ap
             continue
+        sh = _oai_shell_followups(resp, ad)
+        if sh:
+            items = sh
+            continue
+        st = str(resp.get("status", "completed"))
+        if st in ("completed", "failed", "cancelled"):
+            break
         break
     text = last or "(sin texto en output)"
     writes, display = _kiss_writes_bundle(text, "openai")
