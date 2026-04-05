@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>KISS — agentes (Finder)</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header>
+    <h1>Agentes</h1>
+    <div id="breadcrumb"></div>
+    <p id="err"></p>
+  </header>
+  <main>
+    <p>
+      <button type="button" id="up" title="Carpeta superior">⬆️ Subir un nivel</button>
+    </p>
+    <table id="listing">
+      <thead>
+        <tr><th>Nombre</th><th>Tipo / tamaño</th></tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+    <div id="upload">
+      <label for="file">📤 Subir fichero aquí:</label>
+      <input type="file" id="file" />
+    </div>
+    <div id="preview-wrap">
+      <h2>Vista previa</h2>
+      <div id="preview-name"></div>
+      <textarea id="preview" readonly></textarea>
+    </div>
+  </main>
+  <footer>
+    Navegación tipo Finder sobre la raíz de agentes (<code>KISS_AGENTS_ROOT</code>). Solo texto en vista previa; los binarios pueden subirse pero no editarse aquí.
+  </footer>
+  <script src="app.js"></script>
+</body>
+</html>
