@@ -2,15 +2,12 @@ import re
 from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
-
 _CRON = re.compile(r"\*\*cron\*\*:\s*(.+)", re.I)
 _TZ = re.compile(r"\*\*tz\*\*:\s*(.+)", re.I)
 _RUN = re.compile(r"\*\*run\*\*:\s*(.+)", re.I)
 _PAUSED = re.compile(r"\*\*paused\*\*:\s*(.+)", re.I)
 _NB = re.compile(r"\*\*not_before\*\*:\s*(.+)", re.I)
 _BO = re.compile(r"\*\*blackout\*\*:\s*(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})", re.I)
-
-
 def _cron_ok(expr: str, now: datetime) -> bool:
     p = expr.split()
     if len(p) != 5:
@@ -26,14 +23,9 @@ def _cron_ok(expr: str, now: datetime) -> bool:
         if fld != "*" and int(fld) != val:
             return False
     return True
-
-
 def _hist(text: str, row: str) -> str:
     if "## History" not in text:
-        text = (
-            text.rstrip()
-            + "\n\n## History\n\n| Run | Status | Output |\n|-----|--------|--------|\n"
-        )
+        text = text.rstrip() + "\n\n## History\n\n| Run | Status | Output |\n|-----|--------|--------|\n"
     lines = text.splitlines()
     for i, line in enumerate(lines):
         if line.strip() != "## History":
@@ -47,8 +39,6 @@ def _hist(text: str, row: str) -> str:
             lines.insert(j + 1, row)
             return "\n".join(lines) + "\n"
     return text.rstrip() + "\n" + row + "\n"
-
-
 def _nb_ok(s: str, tz: ZoneInfo, now: datetime) -> bool:
     s = s.strip()
     try:
@@ -61,17 +51,12 @@ def _nb_ok(s: str, tz: ZoneInfo, now: datetime) -> bool:
         return now >= lim
     except ValueError:
         return True
-
-
 def _blk(h1: str, h2: str, now: datetime) -> bool:
     def mins(x: str) -> int:
         a, b = x.split(":")
         return int(a) * 60 + int(b)
-
     n, a, b = now.hour * 60 + now.minute, mins(h1), mins(h2)
     return (a <= n <= b) if a <= b else (n >= a or n <= b)
-
-
 def tick_all(agents_root: Path, run_fn) -> list[dict]:
     agents_root = Path(agents_root)
     work: list[tuple[Path, str]] = []

@@ -1,10 +1,7 @@
 from __future__ import annotations
 import json
 from pathlib import Path
-AGENT_FILES = (
-    "agent.md", "prompt.md","tools.md","data.md","done.md","memory.md","steps.md","schedule.md",
-)
-
+AGENT_FILES = ("agent.md", "prompt.md", "tools.md", "data.md", "done.md", "memory.md", "steps.md", "schedule.md")
 def load_agent(folder: Path) -> str:
     folder = Path(folder)
     parts: list[str] = []
@@ -16,25 +13,20 @@ def load_agent(folder: Path) -> str:
         d = folder / sub
         if d.exists():
             for f in sorted(d.rglob("*")):
-                if f.is_file() and f.suffix in (
-                    ".md",".txt",".json",".csv",".py",
-                ):
+                if f.is_file() and f.suffix in (".md", ".txt", ".json", ".csv", ".py"):
                     parts.append(f"# {f.relative_to(folder)}\n\n{f.read_text(encoding='utf-8')}")
     return "\n\n---\n\n".join(parts)
-
 def apply_writes(folder: Path, writes: list) -> None:
     folder = Path(folder)
     for w in writes:
         path = folder / w["path"]
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(w.get("content", ""), encoding="utf-8")
-
 def _json_block(raw: str) -> str:
     s, e = raw.find("```json"), -1
     if s >= 0:
         e = raw.find("```", s + 7)
     return raw[s + 7 : e].strip() if s >= 0 and e > s else ""
-
 def _clean_lists(o: dict) -> dict:
     out = dict(o)
     for k in ("openai_mcp_tools", "anthropic_mcp_servers"):
@@ -52,7 +44,6 @@ def _clean_lists(o: dict) -> dict:
                 cl.append(it)
         out[k] = cl
     return out
-
 def _expand_neutral(o: dict) -> dict:
     out = _clean_lists(o)
     neutral = out.get("mcp_servers")
@@ -73,7 +64,6 @@ def _expand_neutral(o: dict) -> dict:
     out["openai_mcp_tools"] = oa
     out["anthropic_mcp_servers"] = ant
     return out
-
 def _try_dict_from_json_text(text: str) -> dict | None:
     try:
         o = json.loads(text)
@@ -82,7 +72,6 @@ def _try_dict_from_json_text(text: str) -> dict | None:
     if not isinstance(o, dict):
         return None
     return _expand_neutral(o)
-
 def resolve_tools_config(agent_dir: Path | str | None, normalizer=None) -> dict:
     """Una pasada: parse + neutral mcp_servers → listas por proveedor; si falla, 1× normalizer o error en output/."""
     if not agent_dir:
@@ -109,13 +98,8 @@ def resolve_tools_config(agent_dir: Path | str | None, normalizer=None) -> dict:
             pass
     outd = folder / "output"
     outd.mkdir(parents=True, exist_ok=True)
-    (outd / "tools-md-invalid.md").write_text(
-        "# tools.md inválido\n\n"
-        "El bloque ```json no es JSON válido o no pasó validación tras normalizar.\n",
-        encoding="utf-8",
-    )
+    (outd / "tools-md-invalid.md").write_text("# tools.md inválido\n\nEl bloque ```json no es JSON válido o no pasó validación tras normalizar.\n", encoding="utf-8")
     return {}
-
 def parse_or_normalize_tools_md(agent_dir: Path | str | None, normalizer=None) -> dict:
     """Compat: equivale a resolve_tools_config (misma semántica, error en output si falla)."""
     return resolve_tools_config(agent_dir, normalizer)

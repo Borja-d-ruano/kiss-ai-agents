@@ -1,12 +1,8 @@
 import argparse
 import os
 from pathlib import Path
-
-
 def _ex() -> Path:
     return (Path(__file__).resolve().parent.parent / "examples").resolve()
-
-
 def main() -> None:
     ap = argparse.ArgumentParser(description="KISS Agents local (stdlib)")
     sp = ap.add_subparsers(dest="cmd", required=True)
@@ -23,21 +19,16 @@ def main() -> None:
     if a.cmd == "run":
         from model_adapter import call_model
         from run import run
-
         print(run(Path(a.folder).resolve(), a.prompt, call_model, max_turns=a.max_turns))
     elif a.cmd == "tick":
         from model_adapter import call_model
         from run import run, tick_run_fn
         from tick import tick_all
-
         root = Path(a.root).resolve() if a.root else _ex()
         print(tick_all(root, tick_run_fn(root, call_model)))
     else:
         os.environ.setdefault("KISS_AGENTS_ROOT", str(_ex()))
         from http_server import serve
-
         serve(a.host, a.port)
-
-
 if __name__ == "__main__":
     main()
