@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Sirve el Finder (HTML/CSS/JS) + API mínima: listar, leer y subir (PUT). stdlib solamente."""
 from __future__ import annotations
+import errno
 import json
 import os
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -116,11 +117,30 @@ class Handler(BaseHTTPRequestHandler):
 
 def main() -> None:
     host = os.environ.get("AGENTS_FINDER_HOST", "127.0.0.1")
-    port = int(os.environ.get("AGENTS_FINDER_PORT", "9393"))
+    env_p = os.environ.get("AGENTS_FINDER_PORT", "").strip()
+    ports = [int(env_p)] if env_p else list(range(9393, 9403))
     r = agents_root()
-    print(f"KISS agents-finder  http://{host}:{port}/")
-    print(f"  KISS_AGENTS_ROOT={r}")
-    HTTPServer((host, port), Handler).serve_forever()
+    last: OSError | None = None
+    for port in ports:
+        try:
+            httpd = HTTPServer((host, port), Handler)
+        except OSError as e:
+            last = e
+            if e.errno != errno.EADDRINUSE:
+                raise
+            if len(ports) == 1:
+                raise SystemExit(
+                    f"Puerto {port} en uso. Cierra el otro `server.py` o prueba:\n"
+                    f"  AGENTS_FINDER_PORT=9394 python3 server.py\n"
+                    f"  lsof -nP -iTCP:{port} | grep LISTEN"
+                ) from e
+            print(f"Puerto {port} ocupado, probando el siguiente…")
+            continue
+        print(f"KISS agents-finder  http://{host}:{port}/")
+        print(f"  KISS_AGENTS_ROOT={r}")
+        httpd.serve_forever()
+        return
+    raise SystemExit(f"Puertos {ports[0]}–{ports[-1]} ocupados. Libera uno o define AGENTS_FINDER_PORT.") from last
 
 
 if __name__ == "__main__":
