@@ -1,5 +1,4 @@
 from __future__ import annotations
-
 import os
 from datetime import datetime
 from pathlib import Path
@@ -28,22 +27,13 @@ def call_model(*, prompt: str | None = None, context: str, messages: list | None
         return call_anthropic(prompt=prompt, context=context, messages=messages, agent_dir=agent_dir, tools_cfg=tc)
     if prov != "stub":
         raise RuntimeError(f"KISS_PROVIDER desconocido: {prov}")
-    if messages:
-        p = ""
-        for m in reversed(messages):
-            if isinstance(m, dict) and m.get("role") == "user":
-                p = str(m.get("content", "")).lower()
-                break
-    else:
-        p = (prompt or "").lower()
-    src = ""
+    p, src = (prompt or "").lower(), prompt or ""
     if messages:
         for m in reversed(messages):
             if isinstance(m, dict) and m.get("role") == "user":
                 src = str(m.get("content", ""))
+                p = src.lower()
                 break
-    else:
-        src = prompt or ""
     body = "# Respuesta stub\n\n_(stub; KISS_PROVIDER=openai|anthropic + keys)_\n\n## Prompt\n\n" + src[:2000] + "\n"
     w = [{"path": "output/stub-last.md", "content": body}]
     if agent_dir and "KISS:append-heartbeat" in src:

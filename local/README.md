@@ -2,6 +2,8 @@
 
 Tutoriales (no técnico + apéndice para IA): [`../docs/README.md`](../docs/README.md).
 
+**JSON MCP compartido entre agentes:** coloca packs en [`shared/`](shared/) y en `tools.md` usa `"include": "@shared/tu-pack.json"` (véase [`docs/adapters.md`](docs/adapters.md)).
+
 ## Requisitos
 
 - Python 3.9+ (usa `zoneinfo`; en Windows 3.9+ incluye tzdata cuando hace falta).

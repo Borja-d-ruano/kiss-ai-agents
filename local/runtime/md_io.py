@@ -1,5 +1,5 @@
 from __future__ import annotations
-import json
+import json, os
 from pathlib import Path
 AGENT_FILES = ("agent.md", "prompt.md", "tools.md", "data.md", "done.md", "memory.md", "steps.md", "schedule.md")
 def _skip_input_path(folder: Path, f: Path) -> bool:
@@ -124,10 +124,25 @@ def _json_under_agent(folder: Path, rel: str) -> Path | None:
     except ValueError:
         return None
     return c if c.suffix.lower() == ".json" and c.is_file() else None
+def _resolve_include_json(folder: Path, rel: str) -> Path | None:
+    r = rel.strip()
+    if r.startswith("@shared/"):
+        rest = r[8:].lstrip("/")
+        if not rest or ".." in Path(rest).parts:
+            return None
+        e = os.environ.get("KISS_SHARED_TOOLS", "").strip()
+        b = Path(e).resolve() if e else (Path(__file__).resolve().parent.parent / "shared")
+        c = (b / rest).resolve()
+        try:
+            c.relative_to(b.resolve())
+        except ValueError:
+            return None
+        return c if c.suffix.lower() == ".json" and c.is_file() else None
+    return _json_under_agent(folder, rel)
 def _mcp_lists_acc(folder: Path, o: dict, depth: int, vis: set[Path]) -> dict[str, list]:
     a = {k: [] for k in _LST}
     for rel in _inc_paths(o):
-        p = _json_under_agent(folder, rel)
+        p = _resolve_include_json(folder, rel)
         if not p:
             continue
         p, nd = p.resolve(), depth + 1
@@ -228,5 +243,3 @@ def resolve_tools_config(agent_dir: Path | str | None, normalizer=None) -> dict:
     outd.mkdir(parents=True, exist_ok=True)
     (outd / "tools-md-invalid.md").write_text("# tools.md inválido\n\nEl bloque ```json no es JSON válido o no pasó validación tras normalizar.\n", encoding="utf-8")
     return {}
-def parse_or_normalize_tools_md(agent_dir: Path | str | None, normalizer=None) -> dict:
-    return resolve_tools_config(agent_dir, normalizer)

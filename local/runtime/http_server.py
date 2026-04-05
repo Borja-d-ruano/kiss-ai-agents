@@ -6,9 +6,7 @@ from model_adapter import call_model
 from run import run, tick_run_fn
 from tick import tick_all
 def default_agents_root() -> Path:
-    return Path(e).resolve() if (e := os.environ.get("KISS_AGENTS_ROOT")) else (
-        Path(__file__).resolve().parent.parent / "examples"
-    ).resolve()
+    return Path(e).resolve() if (e := os.environ.get("KISS_AGENTS_ROOT")) else (Path(__file__).resolve().parent.parent / "examples").resolve()
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, fmt, *args):
         return

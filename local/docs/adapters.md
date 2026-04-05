@@ -10,6 +10,7 @@ Para una línea futura **agnóstica** (HTTP tools genérico, Python vía proveed
 |----------|--------|
 | `KISS_PROVIDER` | `stub` (defecto), `openai`, `anthropic` o `claude` |
 | `KISS_REAL_MODEL` | Si es `1` y no hay `KISS_PROVIDER`, equivale a `openai` (compat). |
+| `KISS_SHARED_TOOLS` | (Opcional) Directorio base para includes `@shared/…`; por defecto `local/shared/`. |
 
 ## MCP y tools: fuente canónica `tools.md`
 
@@ -27,7 +28,7 @@ Por filosofía del proyecto, la **configuración declarativa** de MCP vive en `t
 `mcp_servers` (opcional) es lista neutral `{ "name", "url", "type" }`; se **mapea** a entradas en las dos listas de proveedor. Para **OpenAI Responses** (Remote MCP), `llm.py` normaliza a `server_label` + `server_url` y el bucle sigue tras `mcp_approval_request` aunque `status` sea `completed`. El runtime, **al arrancar cada `run`**:
 
 1. extrae el primer bloque ` ```json ... ``` ` de `tools.md`,
-2. resuelve `include` o `includes` (ficheros `.json` bajo la carpeta del agente, sin salir del árbol; profundidad máx. 5; dedupe de entradas MCP por `name`+`url`),
+2. resuelve `include` o `includes` (`.json` bajo el agente **o** prefijo `@shared/…` → [`local/shared/`](../shared/); opcional `KISS_SHARED_TOOLS`; prof. máx. 5; dedupe MCP por `name`+`url`),
 3. parsea y valida listas,
 4. aplica `mcp_servers` → openai / anthropic,
 5. opcional: valida `anthropic_skills` (máx. 8 entradas con `type`, `skill_id`, `version?`) para Agent Skills de Anthropic,
@@ -38,6 +39,7 @@ Por filosofía del proyecto, la **configuración declarativa** de MCP vive en `t
 
 - Clave **`include`**: string con ruta relativa a un `.json` (p. ej. `"input/pack-mcp.json"`).
 - Clave **`includes`**: lista de rutas; se procesan en orden.
+- Prefijo **`@shared/`** (p. ej. `"@shared/crm-mcp.json"`): fichero dentro de **`local/shared/`** en el repo (sin copiar ni symlink por agente). Sustituye la base con **`KISS_SHARED_TOOLS`** si está definida (ruta absoluta recomendada).
 - Solo se fusionan las listas **`mcp_servers`**, **`openai_mcp_tools`** y **`anthropic_mcp_servers`** desde los ficheros incluidos; el resto de claves de esos ficheros se ignoran. Las claves propias del bloque principal de `tools.md` (p. ej. **`anthropic_skills`**) aplican al **raíz** del agente, no a los includes.
 
 ### Anthropic Agent Skills (`anthropic_skills`)

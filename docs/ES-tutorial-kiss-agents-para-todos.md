@@ -469,7 +469,7 @@ Implementación: `md_io.resolve_tools_config`.
 
 ### 14.5.1 JSON MCP compartido (`include` / `includes`)
 
-- En el mismo bloque ` ```json ` puedes usar **`include`** (un string) o **`includes`** (lista de strings): rutas a ficheros `.json` **relativas a la carpeta del agente**, sin salir de ese árbol (sin segmentos `..`, sin rutas absolutas).
+- En el mismo bloque ` ```json ` puedes usar **`include`** (un string) o **`includes`** (lista de strings): rutas a `.json` **bajo la carpeta del agente** (sin `..` ni absolutas), **o** rutas con prefijo **`@shared/`** que apuntan a ficheros en **`local/shared/`** del repo (p. ej. `"@shared/mi-mcp.json"`). Opcional: variable **`KISS_SHARED_TOOLS`** para otra carpeta base.
 - Cada fichero incluido se procesa en cadena hasta profundidad **5**. Solo se fusionan **`mcp_servers`**, **`openai_mcp_tools`** y **`anthropic_mcp_servers`** desde los includes; el resto de claves de esos ficheros se ignoran.
 - Orden de fusión: primero todas las ramas incluidas (en el orden declarado), luego las listas del JSON **raíz** de `tools.md`. Las entradas duplicadas (mismo `name` y `url` / `server_url` en minúsculas) se eliminan (**gana la primera**).
 

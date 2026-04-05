@@ -426,7 +426,7 @@ Implementation: `md_io.resolve_tools_config`.
 
 ### 14.5.1 Shared MCP JSON (`include` / `includes`)
 
-- In the same ` ```json ` block you may set **`include`** (a single string) or **`includes`** (array of strings): paths to `.json` files **relative to the agent folder**, staying inside that tree (no `..` path segments, no absolute paths).
+- In the same ` ```json ` block you may set **`include`** (a single string) or **`includes`** (array of strings): paths to `.json` files **under the agent folder** (no `..`, no absolutes), **or** paths with the **`@shared/`** prefix pointing at files in the repo’s **`local/shared/`** (e.g. `"@shared/my-mcp.json"`). Optional env **`KISS_SHARED_TOOLS`** overrides that base directory.
 - Each included file is processed recursively up to depth **5**. Only **`mcp_servers`**, **`openai_mcp_tools`**, and **`anthropic_mcp_servers`** are merged from included files; other keys in those files are ignored.
 - Merge order: all included branches first (in declaration order), then the lists from the **root** `tools.md` JSON. **Duplicates** with the same lowercased `name` and `url` / `server_url` are dropped (**first** wins).
 
