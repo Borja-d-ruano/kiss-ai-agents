@@ -108,134 +108,94 @@ def _expand_neutral(o: dict) -> dict:
     out["openai_mcp_tools"] = oa
     out["anthropic_mcp_servers"] = ant
     return out
-def _try_dict_from_json_text(text: str) -> dict | None:
+_LST = ("mcp_servers", "openai_mcp_tools", "anthropic_mcp_servers")
+_MAX = 5
+def _inc_paths(o: dict) -> list[str]:
+    i = o.get("include", o.get("includes"))
+    if isinstance(i, str) and i.strip():
+        return [i.strip()]
+    return [str(x).strip() for x in i if str(x).strip()] if isinstance(i, list) else []
+def _json_under_agent(folder: Path, rel: str) -> Path | None:
+    if rel.startswith(("/", "\\")) or ".." in Path(rel).parts:
+        return None
+    r, c = folder.resolve(), (folder / rel).resolve()
     try:
-        o = json.loads(text)
-    except json.JSONDecodeError:
-        return None
-    if not isinstance(o, dict):
-        return None
-    return _expand_neutral(o)
-LIST_MERGE_KEYS = ("mcp_servers", "openai_mcp_tools", "anthropic_mcp_servers")
-MAX_TOOLS_INCLUDE_DEPTH = 5
-def _tools_include_paths(o: dict) -> list[str]:
-    inc = o.get("include", o.get("includes"))
-    if isinstance(inc, str) and inc.strip():
-        return [inc.strip()]
-    if isinstance(inc, list):
-        return [str(x).strip() for x in inc if str(x).strip()]
-    return []
-def _safe_tools_json_path(folder: Path, rel: str) -> Path | None:
-    folder = folder.resolve()
-    if rel.startswith(("/", "\\")):
-        return None
-    if ".." in Path(rel).parts:
-        return None
-    cand = (folder / rel).resolve()
-    try:
-        cand.relative_to(folder)
+        c.relative_to(r)
     except ValueError:
         return None
-    if cand.suffix.lower() != ".json" or not cand.is_file():
-        return None
-    return cand
-def _empty_merge_lists() -> dict[str, list]:
-    return {k: [] for k in LIST_MERGE_KEYS}
-def _merge_list_fields(acc: dict[str, list], src: dict) -> None:
-    for k in LIST_MERGE_KEYS:
-        v = src.get(k)
-        if isinstance(v, list):
-            acc.setdefault(k, [])
-            acc[k].extend(v)
-def _mcp_dedupe_key(it: dict) -> tuple[str, str] | None:
-    n = str(it.get("name", "")).strip().lower()
-    u = str(it.get("url", it.get("server_url", ""))).strip().lower()
-    if not n and not u:
-        return None
-    return (n, u)
-def _dedupe_mcp_lists(d: dict) -> dict:
-    out = dict(d)
-    for k in LIST_MERGE_KEYS:
-        lst = out.get(k)
+    return c if c.suffix.lower() == ".json" and c.is_file() else None
+def _mcp_lists_acc(folder: Path, o: dict, depth: int, vis: set[Path]) -> dict[str, list]:
+    a = {k: [] for k in _LST}
+    for rel in _inc_paths(o):
+        p = _json_under_agent(folder, rel)
+        if not p:
+            continue
+        p, nd = p.resolve(), depth + 1
+        if nd > _MAX or p in vis:
+            continue
+        vis.add(p)
+        try:
+            try:
+                sub = json.loads(p.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+                sub = None
+            if isinstance(sub, dict):
+                m = _mcp_lists_acc(folder, sub, nd, vis)
+                for k in _LST:
+                    a[k].extend(m[k])
+        finally:
+            vis.discard(p)
+    loc = {k: v for k, v in o.items() if k not in ("include", "includes")}
+    ex = _expand_neutral(_clean_lists(loc))
+    for k in _LST:
+        if isinstance(ex.get(k), list):
+            a[k].extend(ex[k])
+    return a
+def _tools_finish(d: dict) -> dict:
+    d = dict(d)
+    for k in _LST:
+        lst, seen, nl = d.get(k), set(), []
         if not isinstance(lst, list):
             continue
-        seen: set[tuple[str, str]] = set()
-        nl: list = []
         for it in lst:
             if not isinstance(it, dict):
                 continue
-            dk = _mcp_dedupe_key(it)
-            if dk is None or dk not in seen:
-                if dk is not None:
-                    seen.add(dk)
+            n = str(it.get("name", "")).strip().lower()
+            u = str(it.get("url", it.get("server_url", ""))).strip().lower()
+            key = (n, u) if (n or u) else None
+            if key is None or key not in seen:
+                if key:
+                    seen.add(key)
                 nl.append(it)
-        out[k] = nl
-    return out
-def _trim_anthropic_skills(o: dict) -> dict:
-    out = dict(o)
-    sk = out.get("anthropic_skills")
+        d[k] = nl
+    sk = d.get("anthropic_skills")
     if not isinstance(sk, list):
-        out.pop("anthropic_skills", None)
-        return out
+        d.pop("anthropic_skills", None)
+        return d
     good: list[dict] = []
     for it in sk:
         if len(good) >= 8:
             break
         if not isinstance(it, dict):
             continue
-        t = str(it.get("type", "")).strip()
-        sid = str(it.get("skill_id", "")).strip()
+        t, sid = str(it.get("type", "")).strip(), str(it.get("skill_id", "")).strip()
         if not t or not sid:
             continue
-        entry: dict[str, str] = {"type": t, "skill_id": sid}
-        ver = it.get("version")
-        vs = str(ver).strip() if ver is not None else ""
-        if vs:
-            entry["version"] = vs
-        good.append(entry)
-    out["anthropic_skills"] = good
-    return out
-def _finalize_tools_dict(d: dict) -> dict:
-    return _trim_anthropic_skills(_dedupe_mcp_lists(d))
-def _tools_merge_object_lists(folder: Path, o: dict, depth: int, visiting: set[Path]) -> dict[str, list]:
-    acc = _empty_merge_lists()
-    for rel in _tools_include_paths(o):
-        child = _safe_tools_json_path(folder, rel)
-        if child is None:
-            continue
-        sub = _tools_merge_json_file(folder, child, depth + 1, visiting)
-        _merge_list_fields(acc, sub)
-    local = {k: v for k, v in o.items() if k not in ("include", "includes")}
-    loc_exp = _expand_neutral(_clean_lists(local))
-    _merge_list_fields(acc, {k: loc_exp.get(k, []) for k in LIST_MERGE_KEYS})
-    return acc
-def _tools_merge_json_file(folder: Path, path: Path, depth: int, visiting: set[Path]) -> dict[str, list]:
-    path = path.resolve()
-    if depth > MAX_TOOLS_INCLUDE_DEPTH or path in visiting:
-        return _empty_merge_lists()
-    visiting.add(path)
-    try:
-        try:
-            raw = path.read_text(encoding="utf-8")
-            o = json.loads(raw)
-        except (OSError, json.JSONDecodeError, UnicodeDecodeError):
-            return _empty_merge_lists()
-        if not isinstance(o, dict):
-            return _empty_merge_lists()
-        return _tools_merge_object_lists(folder, o, depth, visiting)
-    finally:
-        visiting.discard(path)
-def _tools_resolve_includes(folder: Path, o: dict) -> dict:
-    visiting: set[Path] = set()
-    lists_acc = _tools_merge_object_lists(folder, o, 0, visiting)
-    local = {k: v for k, v in o.items() if k not in ("include", "includes")}
-    loc_exp = _expand_neutral(_clean_lists(local))
-    out = {k: v for k, v in loc_exp.items() if k not in LIST_MERGE_KEYS}
-    for k in LIST_MERGE_KEYS:
-        out[k] = lists_acc[k]
+        e: dict[str, str] = {"type": t, "skill_id": sid}
+        if it.get("version") is not None and (vs := str(it["version"]).strip()):
+            e["version"] = vs
+        good.append(e)
+    d["anthropic_skills"] = good
+    return d
+def _tools_resolve(folder: Path, o: dict) -> dict:
+    acc = _mcp_lists_acc(folder, o, 0, set())
+    loc = {k: v for k, v in o.items() if k not in ("include", "includes")}
+    ex = _expand_neutral(_clean_lists(loc))
+    out = {k: v for k, v in ex.items() if k not in _LST}
+    for k in _LST:
+        out[k] = acc[k]
     return out
 def resolve_tools_config(agent_dir: Path | str | None, normalizer=None) -> dict:
-    """Parse tools.md JSON, optional include/includes → .json bajo el agente, merge MCP lists, dedupe, anthropic_skills ≤8."""
     if not agent_dir:
         return {}
     folder = Path(agent_dir)
@@ -251,7 +211,7 @@ def resolve_tools_config(agent_dir: Path | str | None, normalizer=None) -> dict:
     except json.JSONDecodeError:
         o = None
     if isinstance(o, dict):
-        return _finalize_tools_dict(_tools_resolve_includes(folder, o))
+        return _tools_finish(_tools_resolve(folder, o))
     if callable(normalizer):
         try:
             fx = normalizer(raw)
@@ -261,7 +221,7 @@ def resolve_tools_config(agent_dir: Path | str | None, normalizer=None) -> dict:
                 except json.JSONDecodeError:
                     o2 = None
                 if isinstance(o2, dict):
-                    return _finalize_tools_dict(_tools_resolve_includes(folder, o2))
+                    return _tools_finish(_tools_resolve(folder, o2))
         except Exception:
             pass
     outd = folder / "output"
@@ -269,5 +229,4 @@ def resolve_tools_config(agent_dir: Path | str | None, normalizer=None) -> dict:
     (outd / "tools-md-invalid.md").write_text("# tools.md inválido\n\nEl bloque ```json no es JSON válido o no pasó validación tras normalizar.\n", encoding="utf-8")
     return {}
 def parse_or_normalize_tools_md(agent_dir: Path | str | None, normalizer=None) -> dict:
-    """Compat: equivale a resolve_tools_config (misma semántica, error en output si falla)."""
     return resolve_tools_config(agent_dir, normalizer)

@@ -75,15 +75,6 @@ def _ant_hdr(beta: str) -> dict[str, str]:
     if beta.strip():
         h["anthropic-beta"] = beta.strip()
     return h
-def _ant_beta_merge_list(parts: list[str], *add: str) -> list[str]:
-    seen = {p.lower() for p in parts if p}
-    out = list(parts)
-    for a in add:
-        if not a or a.lower() in seen:
-            continue
-        seen.add(a.lower())
-        out.append(a)
-    return out
 def _walk_txt(o: Any, acc: list[str]) -> None:
     if isinstance(o, dict):
         if o.get("type") in ("output_text", "text") and "text" in o:
@@ -329,7 +320,11 @@ def _ant_build(cfg: dict) -> tuple[list[dict], list[dict], str]:
     if ex:
         b.extend(x.strip() for x in ex.split(",") if x.strip())
     if has_skills:
-        b = _ant_beta_merge_list(b, "code-execution-2025-08-25", "skills-2025-10-02")
+        seenb = {x.lower() for x in b if x}
+        for x in ("code-execution-2025-08-25", "skills-2025-10-02"):
+            if x.lower() not in seenb:
+                seenb.add(x.lower())
+                b.append(x)
     return t, ms, ",".join(b)
 def call_anthropic(
     *, prompt: str | None = None, context: str, messages: list[dict] | None = None, agent_dir: Path | None = None, tools_cfg: dict | None = None,
